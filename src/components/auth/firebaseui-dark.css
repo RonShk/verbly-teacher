@@ -1,0 +1,81 @@
+/* Strip all FirebaseUI chrome — keep only the button */
+.firebaseui-container {
+  background: transparent !important;
+  box-shadow: none !important;
+  min-height: 0 !important;
+  font-family: inherit !important;
+}
+
+.firebaseui-card-header,
+.firebaseui-card-footer,
+.firebaseui-tos,
+.firebaseui-tospp-full-message {
+  display: none !important;
+}
+
+.firebaseui-card-content {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.firebaseui-idp-list {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.firebaseui-list-item {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Pill button */
+.firebaseui-idp-button {
+  border-radius: 9999px !important;
+  background: #1E1E1E !important;
+  border: 1px solid #2E2E2E !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 52px !important;
+  padding: 0 20px !important;
+  box-shadow: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease, border-color 0.15s ease !important;
+}
+
+.firebaseui-idp-button:hover {
+  background: #252525 !important;
+  border-color: #3A3A3A !important;
+}
+
+/* MDL ripple/shadow overrides */
+.mdl-button--raised,
+.mdl-button--raised:active,
+.mdl-button--raised:focus:not(:active) {
+  box-shadow: none !important;
+}
+
+.firebaseui-idp-text-long {
+  display: block !important;
+  color: #ffffff !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em !important;
+}
+
+.firebaseui-idp-text-short {
+  display: none !important;
+}
+
+.firebaseui-idp-icon-wrapper {
+  display: flex !important;
+  align-items: center !important;
+}
+
+.firebaseui-idp-icon {
+  width: 20px !important;
+  height: 20px !important;
+}
