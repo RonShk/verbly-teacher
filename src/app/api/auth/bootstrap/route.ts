@@ -36,10 +36,8 @@ export async function POST(request: Request): Promise<Response> {
     const db = getAdminFirestore()
     const docRef = db.collection('teachers').doc(uid)
     const docSnap = await docRef.get()
-    let isNew = false
 
     if (!docSnap.exists) {
-      isNew = true
       await docRef.set({
         uid,
         displayName,
@@ -52,7 +50,6 @@ export async function POST(request: Request): Promise<Response> {
     const data = finalSnap.data()!
 
     return Response.json({
-      isNew,
       teacher: {
         uid:         data.uid,
         displayName: data.displayName,
