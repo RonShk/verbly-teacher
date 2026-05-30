@@ -41,7 +41,6 @@ export async function POST(request: Request): Promise<Response> {
     if (!docSnap.exists) {
       isNew = true
       await docRef.set({
-        uid,
         displayName,
         email,
         createdAt: FieldValue.serverTimestamp(),
@@ -54,7 +53,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({
       isNew,
       teacher: {
-        uid:         data.uid,
+        uid,
         displayName: data.displayName,
         email:       data.email,
         createdAt:   data.createdAt.toDate().toISOString(),
