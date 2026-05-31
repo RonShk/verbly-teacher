@@ -59,7 +59,7 @@ export default function FirebaseSignIn() {
                 setLoading(false)
                 return
               }
-              router.push('/dashboard')
+              router.push('/')
             } catch {
               setError('Could not reach the server. Please try again.')
               setLoading(false)

@@ -1,5 +1,6 @@
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
 import { FieldValue } from 'firebase-admin/firestore'
+import { cookies } from 'next/headers'
 
 interface BootstrapBody {
   idToken: string
@@ -47,6 +48,16 @@ export async function POST(request: Request): Promise<Response> {
 
     const finalSnap = await docRef.get()
     const data = finalSnap.data()!
+
+    // Max age is in seconds. 60 * 60 * 24 * 7 (7 days)
+    const cookieStore = await cookies()
+    cookieStore.set('auth_session', '1', {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7,
+      secure: process.env.NODE_ENV === 'production',
+    })
 
     return Response.json({
       teacher: {
