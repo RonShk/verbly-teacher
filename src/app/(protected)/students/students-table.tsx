@@ -341,7 +341,7 @@ function AddStudentDialog({
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => handleSelect(s)}
-                      className="flex w-full flex-col px-3 py-2.5 text-left hover:bg-white/[0.05]"
+                      className="flex w-full flex-col px-3 py-2.5 text-left hover:bg-white/5"
                     >
                       <span className="text-sm font-medium text-foreground">
                         {s.name}
@@ -592,7 +592,7 @@ export function StudentsTable() {
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
-                    className="border-border last:border-0 hover:bg-white/[0.03]"
+                    className="border-border last:border-0 hover:bg-white/3"
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="px-4 py-3">
