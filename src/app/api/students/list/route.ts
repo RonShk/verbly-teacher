@@ -1,25 +1,14 @@
-import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
+import { getAdminFirestore } from '@/lib/firebase/admin'
+import { verifyAuth } from '@/lib/server/verifyAuth'
 
 export async function GET(request: Request): Promise<Response> {
-  const authHeader = request.headers.get('Authorization')
-  const idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-  if (!idToken) {
-    return Response.json({ error: 'Authorization header required' }, { status: 401 })
-  }
-
-  let teacherUid: string
-  try {
-    const decoded = await getAdminAuth().verifyIdToken(idToken)
-    teacherUid = decoded.uid
-  } catch {
-    return Response.json({ error: 'Invalid or expired token' }, { status: 401 })
-  }
+  const auth = await verifyAuth(request)
+  if (!auth.ok) return auth.response
 
   const db = getAdminFirestore()
   const snap = await db
     .collection('teachers')
-    .doc(teacherUid)
+    .doc(auth.tutorUid)
     .collection('students')
     .orderBy('signUpDate', 'asc')
     .get()
