@@ -1,6 +1,6 @@
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
 
-const RANGE_END = ''
+const RANGE_END = '\uf8ff'
 
 export async function GET(request: Request): Promise<Response> {
   const authHeader = request.headers.get('Authorization')
@@ -10,8 +10,8 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const { searchParams } = new URL(request.url)
-  const q = (searchParams.get('q') ?? '').toLowerCase()
-  if (q.length < 4) {
+  const searchQuery = (searchParams.get('q') ?? '').toLowerCase()
+  if (searchQuery.length < 4) {
     return Response.json({ students: [] })
   }
 
@@ -24,8 +24,8 @@ export async function GET(request: Request): Promise<Response> {
   const db = getAdminFirestore()
   const snap = await db
     .collection('students')
-    .where('email', '>=', q)
-    .where('email', '<=', q + RANGE_END)
+    .where('email', '>=', searchQuery)
+    .where('email', '<=', searchQuery + RANGE_END)
     .limit(6)
     .get()
 

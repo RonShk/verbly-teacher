@@ -46,13 +46,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const db = getAdminFirestore()
-
-  // Confirm the user has a student profile (signed up via the student app)
   const studentDocRef = db.collection('students').doc(studentUid)
-  const studentDoc = await studentDocRef.get()
-  if (!studentDoc.exists) {
-    return Response.json({ error: 'not_found' }, { status: 404 })
-  }
 
   const rosterRef = db
     .collection('teachers')
