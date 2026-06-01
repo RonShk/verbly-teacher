@@ -2,6 +2,7 @@
 
 import { getApp, getApps, initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
+import { getFirestore } from 'firebase/firestore'
 import compatApp from 'firebase/compat/app'
 import 'firebase/compat/auth'
 
@@ -23,5 +24,5 @@ if (!compatApp.apps.length) {
 }
 
 export const compatAuth = compatApp.auth()
-// Auth instance needed for SDK functions to interact with Firebase SDK
-export const clientAuth = getAuth(getApp()) 
+export const clientAuth = getAuth(getApp())
+export const clientDb = getFirestore(getApp())

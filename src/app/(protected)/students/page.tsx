@@ -1,13 +1,15 @@
 import type { Metadata } from 'next'
 
+import { StudentsTable } from './students-table'
+
 export const metadata: Metadata = {
-  title: 'Students — Verbly',
+  title: 'Students Overview — Verbly',
 }
 
 export default function StudentsPage() {
   return (
-    <div className="min-h-screen bg-[#141414] flex flex-col items-center justify-center">
-      <h1 className="text-2xl font-bold text-white">Student Dashboard</h1>
+    <div className="min-h-screen bg-background">
+      <StudentsTable />
     </div>
   )
 }
