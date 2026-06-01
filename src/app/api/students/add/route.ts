@@ -1,4 +1,5 @@
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
+import { verifyIdToken } from '@/lib/server/verifyAuth'
 
 interface AddStudentBody {
   idToken: string
@@ -18,13 +19,10 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'idToken and studentEmail are required' }, { status: 400 })
   }
 
-  let teacherUid: string
-  try {
-    const decoded = await getAdminAuth().verifyIdToken(idToken)
-    teacherUid = decoded.uid
-  } catch {
-    return Response.json({ error: 'Invalid or expired token' }, { status: 401 })
-  }
+  const auth = await verifyIdToken(idToken)
+  if (!auth.ok) return auth.response
+
+  const teacherUid = auth.tutorUid
 
   let studentUid: string
   let studentName: string

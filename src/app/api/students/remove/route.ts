@@ -1,4 +1,6 @@
-import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
+import { getAdminFirestore } from '@/lib/firebase/admin'
+import { assertTutorOwnsStudent } from '@/lib/server/assertTutorOwnsStudent'
+import { verifyIdToken } from '@/lib/server/verifyAuth'
 
 interface RemoveStudentBody {
   idToken: string
@@ -18,18 +20,21 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'idToken and studentUid are required' }, { status: 400 })
   }
 
-  let teacherUid: string
-  try {
-    const decoded = await getAdminAuth().verifyIdToken(idToken)
-    teacherUid = decoded.uid
-  } catch {
-    return Response.json({ error: 'Invalid or expired token' }, { status: 401 })
-  }
+  const auth = await verifyIdToken(idToken)
+  if (!auth.ok) return auth.response
+
+  const denied = await assertTutorOwnsStudent(auth.tutorUid, studentUid)
+  if (denied) return denied
 
   const db = getAdminFirestore()
 
   await Promise.all([
-    db.collection('teachers').doc(teacherUid).collection('students').doc(studentUid).delete(),
+    db
+      .collection('teachers')
+      .doc(auth.tutorUid)
+      .collection('students')
+      .doc(studentUid)
+      .delete(),
     db.collection('students').doc(studentUid).update({ teacherId: null }),
   ])
 
