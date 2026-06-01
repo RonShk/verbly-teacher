@@ -1,12 +1,14 @@
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
-import { verifyIdToken } from '@/lib/server/verifyAuth'
+import { verifyAuth } from '@/lib/server/verifyAuth'
 
 interface AddStudentBody {
-  idToken: string
   studentEmail: string
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const auth = await verifyAuth(request)
+  if (!auth.ok) return auth.response
+
   let body: AddStudentBody
   try {
     body = await request.json()
@@ -14,13 +16,10 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { idToken, studentEmail } = body
-  if (!idToken || !studentEmail) {
-    return Response.json({ error: 'idToken and studentEmail are required' }, { status: 400 })
+  const { studentEmail } = body
+  if (!studentEmail) {
+    return Response.json({ error: 'studentEmail is required' }, { status: 400 })
   }
-
-  const auth = await verifyIdToken(idToken)
-  if (!auth.ok) return auth.response
 
   const teacherUid = auth.tutorUid
 

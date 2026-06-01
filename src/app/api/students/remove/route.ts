@@ -1,13 +1,15 @@
 import { getAdminFirestore } from '@/lib/firebase/admin'
 import { assertTutorOwnsStudent } from '@/lib/server/assertTutorOwnsStudent'
-import { verifyIdToken } from '@/lib/server/verifyAuth'
+import { verifyAuth } from '@/lib/server/verifyAuth'
 
 interface RemoveStudentBody {
-  idToken: string
   studentUid: string
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const auth = await verifyAuth(request)
+  if (!auth.ok) return auth.response
+
   let body: RemoveStudentBody
   try {
     body = await request.json()
@@ -15,13 +17,10 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { idToken, studentUid } = body
-  if (!idToken || !studentUid) {
-    return Response.json({ error: 'idToken and studentUid are required' }, { status: 400 })
+  const { studentUid } = body
+  if (!studentUid) {
+    return Response.json({ error: 'studentUid is required' }, { status: 400 })
   }
-
-  const auth = await verifyIdToken(idToken)
-  if (!auth.ok) return auth.response
 
   const denied = await assertTutorOwnsStudent(auth.tutorUid, studentUid)
   if (denied) return denied
