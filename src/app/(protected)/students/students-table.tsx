@@ -266,8 +266,11 @@ function AddStudentDialog({
 
       const res = await fetch("/api/students/add", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken, studentEmail: email }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ studentEmail: email }),
       })
 
       const data = await res.json()
@@ -443,8 +446,11 @@ export function StudentsTable() {
 
       await fetch("/api/students/remove", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken, studentUid: target.uid }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ studentUid: target.uid }),
       })
     } catch {
       // Silently revert on failure
