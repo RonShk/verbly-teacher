@@ -7,8 +7,8 @@ import type { User } from 'firebase/auth'
 import { clientAuth } from '@/lib/firebase/client'
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(clientAuth.currentUser)
+  const [loading, setLoading] = useState(clientAuth.currentUser === null)
   const router = useRouter()
 
   useEffect(() => {
@@ -17,7 +17,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       setLoading(false)
       if (!currentUser) router.replace('/login')
     })
-  }, [router])
+    // router is a stable reference in App Router — no dep needed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (loading || !user) return <div className="min-h-screen bg-[#141414]" />
   return <>{children}</>

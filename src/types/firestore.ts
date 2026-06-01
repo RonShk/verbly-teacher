@@ -5,3 +5,10 @@ export interface TeacherDoc {
   createdAt: Date | { toDate(): Date }
   photoURL?: string
 }
+
+export interface StudentRosterEntry {
+  uid: string
+  name: string
+  email: string
+  signUpDate: Date | { toDate(): Date }
+}
