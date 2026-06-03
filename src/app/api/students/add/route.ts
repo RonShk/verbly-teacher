@@ -62,7 +62,7 @@ export async function POST(request: Request): Promise<Response> {
     signUpDate,
   })
 
-  await studentDocRef.update({ teacherId: teacherUid })
+  await studentDocRef.set({ teacherId: teacherUid }, { merge: true })
 
   return Response.json({
     student: { uid: studentUid, name: studentName, email: resolvedEmail },

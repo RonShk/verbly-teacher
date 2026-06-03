@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import type { StudentOverviewResponse } from '@/types/student-overview'
+import { clientAuth } from '@/lib/firebase/client'
 import {
   ArrowLeft,
   BookOpen,
@@ -24,64 +26,62 @@ import {
   Search,
   Sparkles,
   MoreHorizontal,
+  ShieldOff,
+  AlertTriangle,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Card, CardContent } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts'
 
 // ---------------------------------------------------------------------------
-// Mock data (replace with GET /api/students/[studentUid]/overview)
+// Helpers
 // ---------------------------------------------------------------------------
 
-const MOCK_STUDENT = {
-  uid: 'mock-uid',
-  name: 'Maria Lopez',
-  email: 'maria@example.com',
-  linkedDate: 'Sep 12, 2024',
-  lastActive: '2h ago',
-  wordCount: 312,
-  avatarColor: 'bg-teal-500',
-  initials: 'ML',
+const AVATAR_COLORS = [
+  'bg-purple-500', 'bg-blue-500', 'bg-pink-500', 'bg-teal-500',
+  'bg-orange-500', 'bg-slate-500', 'bg-indigo-500', 'bg-emerald-500',
+]
+
+function deriveInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+function deriveColor(uid: string): string {
+  let hash = 0
+  for (let i = 0; i < uid.length; i++) hash = (hash * 31 + uid.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+function formatLinkedDate(isoString: string | null): string {
+  if (!isoString) return 'Unknown'
+  return new Date(isoString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatLastActive(isoString: string | null): string {
+  if (!isoString) return 'Never'
+  const diff = Date.now() - new Date(isoString).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days === 1) return 'Yesterday'
+  return `${days}d ago`
 }
 
 type PracticeStatus = 'done' | 'in_progress' | 'not_started'
 
-const MOCK_PRACTICE: {
-  id: string
-  label: string
-  status: PracticeStatus
-  headline: string
-  subline: string
-  icon: React.ReactNode
-}[] = [
-  {
-    id: 'vocab',
-    label: 'VOCAB',
-    status: 'done',
-    headline: 'Done',
-    subline: '18 cards reviewed',
-    icon: <BookOpen className="h-5 w-5" />,
-  },
-  {
-    id: 'production',
-    label: 'PRODUCTION',
-    status: 'done',
-    headline: '88% score',
-    subline: '12/12 questions completed',
-    icon: <Languages className="h-5 w-5" />,
-  },
-  {
-    id: 'translation',
-    label: 'TRANSLATION',
-    status: 'not_started',
-    headline: 'Not started',
-    subline: 'Pending today',
-    icon: <FileText className="h-5 w-5" />,
-  },
-]
+function mapStatus(s: string): PracticeStatus {
+  if (s === 'complete') return 'done'
+  if (s === 'in_progress') return 'in_progress'
+  return 'not_started'
+}
 
 type ActivityType = 'quiz' | 'vocab' | 'production' | 'words_added'
 
@@ -98,13 +98,6 @@ const MOCK_ACTIVITY: {
   { id: '3', type: 'production', title: 'Production Practice', detail: '71% Accuracy', timestamp: 'Yesterday', score: 71 },
   { id: '4', type: 'words_added', title: 'Words Added', detail: '12 new words imported', timestamp: 'Yesterday', score: null },
   { id: '5', type: 'production', title: 'Production Practice', detail: '54% Accuracy', timestamp: '3d ago', score: 54 },
-]
-
-const MOCK_VOCAB_HEALTH = [
-  { label: 'NEW', count: 18, color: '#5B9BD5', pct: 6 },
-  { label: 'LEARNING', count: 42, color: '#1dae75', pct: 14 },
-  { label: 'REVIEW', count: 240, color: '#8DCEF9', pct: 78 },
-  { label: 'RELEARNING', count: 12, color: '#E24B4A', pct: 4 },
 ]
 
 // ---------------------------------------------------------------------------
@@ -810,13 +803,146 @@ function ProgressTab() {
 
 // ---------------------------------------------------------------------------
 
+const VOCAB_HEALTH_CONFIG = [
+  { key: 'new',        label: 'NEW',        color: '#5B9BD5' },
+  { key: 'learning',   label: 'LEARNING',   color: '#1dae75' },
+  { key: 'review',     label: 'REVIEW',     color: '#8DCEF9' },
+  { key: 'relearning', label: 'RELEARNING', color: '#E24B4A' },
+] as const
+
 type Tab = 'overview' | 'vocabulary' | 'progress'
 
 export function StudentOverview() {
-  useParams() // ensure client boundary resolves studentUid context
+  const params = useParams()
+  const studentUid = params.studentUid as string
   const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [overview, setOverview] = useState<StudentOverviewResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<{ status: number; message: string } | null>(null)
 
-  const student = MOCK_STUDENT
+  useEffect(() => {
+    const user = clientAuth.currentUser
+    if (!user) return
+    user.getIdToken().then((token) => {
+      const tz = -(new Date().getTimezoneOffset())
+      return fetch(
+        `/api/students/${studentUid}/overview?timezoneOffsetMinutes=${tz}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+    }).then(async (r) => {
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        setError({ status: r.status, message: body.error ?? `Error ${r.status}` })
+        return
+      }
+      setOverview(await r.json())
+    }).catch(() => {
+      setError({ status: 0, message: 'Network error — please try again.' })
+    }).finally(() => setLoading(false))
+  }, [studentUid])
+
+  const student = overview?.student
+  const firstName = student?.name.split(' ')[0] ?? ''
+  const initials = student ? deriveInitials(student.name) : '…'
+  const avatarColor = student ? deriveColor(student.uid) : 'bg-slate-500'
+
+  // Build practice cards from real data
+  function buildPracticeCards() {
+    if (!overview?.today) return []
+    const { vocab, production, translation } = overview.today
+    return [
+      {
+        id: 'vocab',
+        label: 'VOCAB',
+        status: mapStatus(vocab.status),
+        headline: vocab.status === 'complete'
+          ? 'Done'
+          : vocab.status === 'in_progress'
+            ? `${vocab.reviewedCount} cards reviewed`
+            : 'Not started',
+        subline: vocab.status === 'complete'
+          ? `${vocab.reviewedCount} cards reviewed`
+          : vocab.status === 'in_progress'
+            ? 'In progress'
+            : 'Pending today',
+        icon: <BookOpen className="h-5 w-5" />,
+      },
+      {
+        id: 'production',
+        label: 'PRODUCTION',
+        status: mapStatus(production.status),
+        headline: production.status === 'not_started'
+          ? 'Not started'
+          : `${production.scorePercent ?? 0}% score`,
+        subline: production.status === 'not_started'
+          ? 'Pending today'
+          : `${production.completedCount}/${production.totalCount} questions completed`,
+        icon: <Languages className="h-5 w-5" />,
+      },
+      {
+        id: 'translation',
+        label: 'TRANSLATION',
+        status: mapStatus(translation.status),
+        headline: translation.status === 'not_started'
+          ? 'Not started'
+          : `${translation.scorePercent ?? 0}% score`,
+        subline: translation.status === 'not_started'
+          ? 'Pending today'
+          : `${translation.completedCount}/${translation.totalCount} questions completed`,
+        icon: <FileText className="h-5 w-5" />,
+      },
+    ]
+  }
+
+  const practiceCards = buildPracticeCards()
+
+  const vocabHealth = overview?.vocabHealth
+  const healthTotal = vocabHealth?.total ?? 1
+
+  if (!loading && error) {
+    const is403 = error.status === 403
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="px-8 pt-6">
+          <Link
+            href="/students"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Students
+          </Link>
+        </div>
+        <div className="flex flex-1 items-center justify-center px-8">
+          <Card className="w-full max-w-sm border-border bg-card">
+            <CardContent className="flex flex-col items-center gap-4 px-8 py-10 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.04]">
+                {is403
+                  ? <ShieldOff className="h-5 w-5 text-muted-foreground" />
+                  : <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+                }
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <p className="text-lg font-semibold font-heading text-foreground">
+                  {is403 ? 'Student not on your roster' : 'Something went wrong'}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {is403
+                    ? 'Double-check your roster or ask the student to re-link their account.'
+                    : error.message}
+                </p>
+              </div>
+              <Link href="/students">
+                <Button className="mt-1 border border-border bg-transparent font-medium text-muted-foreground hover:text-foreground">
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back to Students
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-0">
@@ -836,27 +962,31 @@ export function StudentOverview() {
         <div className="flex items-start gap-4">
           {/* Avatar */}
           <div
-            className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl ${student.avatarColor} text-lg font-semibold text-white`}
+            className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl ${avatarColor} text-lg font-semibold text-white`}
           >
-            {student.initials}
+            {initials}
           </div>
 
           {/* Name / meta */}
           <div className="flex flex-col gap-1.5">
             <h1 className="text-2xl font-bold font-heading text-foreground">
-              {student.name}
+              {loading ? <span className="opacity-40">Loading…</span> : (student?.name ?? '—')}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {student.email}
-              <span className="mx-2 opacity-40">•</span>
-              Linked {student.linkedDate}
+              {student?.email ?? ''}
+              {student?.linkedAt && (
+                <>
+                  <span className="mx-2 opacity-40">•</span>
+                  Linked {formatLinkedDate(student.linkedAt)}
+                </>
+              )}
             </p>
             <div className="flex items-center gap-2">
               <span className="rounded-full border border-border bg-card px-2.5 py-0.5 text-xs text-muted-foreground">
-                Last active {student.lastActive}
+                Last active {formatLastActive(student?.lastActiveAt ?? null)}
               </span>
               <span className="rounded-full border border-border bg-card px-2.5 py-0.5 text-xs text-muted-foreground">
-                {student.wordCount} words
+                {student?.vocabTotal ?? '—'} words
               </span>
             </div>
           </div>
@@ -866,7 +996,7 @@ export function StudentOverview() {
         <div className="flex items-center gap-2.5">
           <Button className="bg-[#8DCEF9] font-medium text-[#0a1a2a] hover:bg-[#A8DAFC]">
             <Zap className="h-3.5 w-3.5" />
-            Ask about Maria
+            {firstName ? `Ask about ${firstName}` : 'Ask Verbly'}
           </Button>
           <Button className="border border-[rgba(141,206,249,0.3)] bg-transparent font-medium text-[#C8E8FC] hover:border-[rgba(141,206,249,0.5)] hover:bg-[rgba(141,206,249,0.05)]">
             <Plus className="h-3.5 w-3.5" />
@@ -914,7 +1044,7 @@ export function StudentOverview() {
               Today&apos;s Practice
             </h2>
             <div className="grid grid-cols-3 gap-4">
-              {MOCK_PRACTICE.map((p) => (
+              {practiceCards.map((p) => (
                 <PracticeCard key={p.id} {...p} />
               ))}
             </div>
@@ -922,7 +1052,7 @@ export function StudentOverview() {
 
           {/* Bottom two-column layout */}
           <div className="grid grid-cols-[1fr_360px] gap-4">
-            {/* Recent Activity */}
+            {/* Recent Activity (still mock — future work) */}
             <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card">
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <h2 className="text-base font-semibold font-heading text-foreground">
@@ -973,27 +1103,28 @@ export function StudentOverview() {
                 </h2>
               </div>
               <div className="flex flex-1 flex-col gap-4 px-5 py-5">
-                {MOCK_VOCAB_HEALTH.map((item) => (
-                  <div key={item.label} className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-                        {item.label}
-                      </span>
-                      <span className="text-sm font-medium text-foreground">
-                        {item.count}
-                      </span>
+                {VOCAB_HEALTH_CONFIG.map(({ key, label, color }) => {
+                  const count = vocabHealth?.[key] ?? 0
+                  const pct = healthTotal > 0 ? (count / healthTotal) * 100 : 0
+                  return (
+                    <div key={key} className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                          {label}
+                        </span>
+                        <span className="text-sm font-medium text-foreground">
+                          {count}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, backgroundColor: color }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${item.pct}%`,
-                          backgroundColor: item.color,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               <div className="border-t border-border px-5 py-3.5">
                 <button className="flex items-center gap-1 text-sm font-medium text-[#8DCEF9] hover:underline">
