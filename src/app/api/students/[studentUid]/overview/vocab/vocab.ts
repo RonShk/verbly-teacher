@@ -61,17 +61,11 @@ function buildFromVocabDocs(vocabDocs: QueryDocumentSnapshot[], todayStr: string
 export async function fetchVocabOverview(studentUid: string, todayStr: string, utcOffsetMinutes: number,): Promise<VocabOverviewResult> {
   const db = getAdminFirestore()
 
-  const vocabSnap = await db
+  const cardsSnap = await db
     .collection('student_vocab')
-    .where('studentUid', '==', studentUid)
-    .limit(1)
+    .doc(studentUid)
+    .collection('cards')
     .get()
-
-  if (vocabSnap.empty) {
-    return { health: { new: 0, learning: 0, review: 0, relearning: 0, total: 0 }, today: { status: 'not_started', reviewedCount: 0 }, lastReviewAt: null }
-  }
-
-  const cardsSnap = await vocabSnap.docs[0].ref.collection('cards').get()
 
   return buildFromVocabDocs(cardsSnap.docs, todayStr, utcOffsetMinutes)
 }

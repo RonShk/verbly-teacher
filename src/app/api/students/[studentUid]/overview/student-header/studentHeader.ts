@@ -23,9 +23,8 @@ export async function fetchStudentHeaderInputs(tutorUid: string, studentUid: str
     .collection('students')
     .doc(studentUid)
 
-  const [tutorStudentDocumentSnap, studentDocSnap, latestCompletedAssignmentSnap] = await Promise.all([
+  const [tutorStudentDocumentSnap, latestCompletedAssignmentSnap] = await Promise.all([
     tutorStudentDocumentRef.get(),
-    db.collection('students').doc(studentUid).get(),
     db
       .collection('user_assignments')
       .where('userId', '==', studentUid)
@@ -38,21 +37,8 @@ export async function fetchStudentHeaderInputs(tutorUid: string, studentUid: str
     | Timestamp
     | undefined
 
-  // Prefer roster doc; fall back to root students doc (e.g. when roster check is bypassed)
-  const rosterData = tutorStudentDocumentSnap.data()
-  const studentData = studentDocSnap.data()
-  const mergedDoc: DocumentData | undefined = rosterData
-    ? rosterData
-    : studentData
-      ? {
-          name: studentData.displayName,
-          email: studentData.email,
-          signUpDate: studentData.createdAt,
-        }
-      : undefined
-
   return {
-    tutorStudentDocument: mergedDoc,
+    tutorStudentDocument: tutorStudentDocumentSnap.data(),
     latestCompletedAt: latestCompleted?.toDate() ?? null,
   }
 }
