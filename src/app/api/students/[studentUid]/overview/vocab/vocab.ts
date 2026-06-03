@@ -59,10 +59,13 @@ function buildFromVocabDocs(vocabDocs: QueryDocumentSnapshot[], todayStr: string
 }
 
 export async function fetchVocabOverview(studentUid: string, todayStr: string, utcOffsetMinutes: number,): Promise<VocabOverviewResult> {
-  const vocabSnap = await getAdminFirestore()
-    .collection('vocab_cards')
-    .where('userId', '==', studentUid)
+  const db = getAdminFirestore()
+
+  const cardsSnap = await db
+    .collection('student_vocab')
+    .doc(studentUid)
+    .collection('cards')
     .get()
 
-  return buildFromVocabDocs(vocabSnap.docs, todayStr, utcOffsetMinutes)
+  return buildFromVocabDocs(cardsSnap.docs, todayStr, utcOffsetMinutes)
 }
