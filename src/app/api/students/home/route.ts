@@ -22,29 +22,29 @@ export async function GET(request: Request): Promise<Response> {
       const { name, email } = doc.data()
       const studentUid = doc.id
 
-      const cardsSnap = await db
-        .collection('student_vocab')
-        .doc(studentUid)
-        .collection('cards')
-        .get()
+      const [vocabDoc, cardsSnap] = await Promise.all([
+        db.collection('student_vocab').doc(studentUid).get(),
+        db
+          .collection('student_vocab')
+          .doc(studentUid)
+          .collection('cards')
+          .where('lastReview', '>=', weekAgo)
+          .get(),
+      ])
 
-      let wordsThisWeek = 0
-      let lastActiveAt: string | null = null
+      const lastActiveTx = vocabDoc.data()?.lastActiveAt as Timestamp | undefined
+      const lastActiveAt = lastActiveTx?.toDate().toISOString() ?? null
 
-      for (const card of cardsSnap.docs) {
-        const ts = card.data().lastReview as Timestamp | undefined
-        if (!ts) continue
-        const reviewed = ts.toDate()
-        if (reviewed >= weekAgo) wordsThisWeek++
-        const iso = reviewed.toISOString()
-        if (!lastActiveAt || iso > lastActiveAt) lastActiveAt = iso
-      }
-
-      return { uid: studentUid, name, email, wordsThisWeek, lastActiveAt }
+      return { uid: studentUid, name, email, wordsThisWeek: cardsSnap.size, lastActiveAt }
     }),
   )
 
-  students.sort((a, b) => b.wordsThisWeek - a.wordsThisWeek)
+  students.sort((a, b) => {
+    if (a.lastActiveAt === b.lastActiveAt) return 0
+    if (!a.lastActiveAt) return 1
+    if (!b.lastActiveAt) return -1
+    return a.lastActiveAt > b.lastActiveAt ? -1 : 1
+  })
 
   return Response.json({ students })
 }
