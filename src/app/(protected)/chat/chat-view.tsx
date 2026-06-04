@@ -171,7 +171,7 @@ export function ChatView() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0a0a0a]">
+    <div className="flex h-full overflow-hidden bg-[#0a0a0a]">
 
       {/* ── Sidebar ── */}
       <aside className="flex w-[240px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0a0a]">
