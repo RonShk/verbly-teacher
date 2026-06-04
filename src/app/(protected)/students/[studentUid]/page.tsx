@@ -7,9 +7,5 @@ export const metadata: Metadata = {
 }
 
 export default function StudentPage() {
-  return (
-    <div className="min-h-screen bg-background">
-      <StudentOverview />
-    </div>
-  )
+  return <StudentOverview />
 }
