@@ -40,11 +40,6 @@ function docToItem(doc: QueryDocumentSnapshot): VocabCardItem {
   }
 }
 
-function sortAndPage(items: VocabCardItem[], skip: number, pageSize: number) {
-  items.sort((a, b) => a.englishWord.localeCompare(b.englishWord))
-  return { total: items.length, items: items.slice(skip, skip + pageSize) }
-}
-
 // 2 Firestore reads: parent doc (pre-computed state counts) + 1 count() for dueSoon.
 async function fetchCounts(
   parentRef: FirebaseFirestore.DocumentReference,
@@ -58,12 +53,78 @@ async function fetchCounts(
   const d = parentSnap.data() ?? {}
   const sc = (d.stateCounts ?? {}) as Record<string, number>
   return {
-    all: (d.totalCards as number) ?? 0,
+    all: (d.totalCards as number | undefined) ?? 0,
     new: sc.new ?? 0,
     learning: sc.learning ?? 0,
     review: sc.review ?? 0,
     relearning: sc.relearning ?? 0,
     dueSoon: dueSoonSnap.data().count,
+  }
+}
+
+// Non-search path: server-side pagination — reads only pageSize docs per request.
+// Requires a composite index in vocab_forge/firestore.indexes.json:
+//   collectionGroup: "cards", fields: [{ state: ASC }, { englishWord: ASC }]
+async function fetchPage(
+  cardsRef: CollectionReference,
+  status: VocabStatusFilter,
+  sevenDaysLater: Date,
+  skip: number,
+  pageSize: number,
+): Promise<VocabCardItem[]> {
+  let query: Query
+  if (status === 'due_soon') {
+    // Firestore requires orderBy on the inequality field first, so due_soon sorts by due date asc.
+    query = cardsRef.where('due', '<=', sevenDaysLater).orderBy('due').limit(pageSize).offset(skip)
+  } else if (status !== 'all') {
+    query = cardsRef.where('state', '==', STATUS_TO_FSRS[status]).orderBy('englishWord').limit(pageSize).offset(skip)
+  } else {
+    query = cardsRef.orderBy('englishWord').limit(pageSize).offset(skip)
+  }
+  const snap = await query.get()
+  return snap.docs.map(docToItem)
+}
+
+// Search path: reads all docs in the status-filtered set and searches in memory.
+// Tradeoff: O(n) reads where n = cards matching the status filter, not just pageSize.
+// Firestore does not support substring search, so this is the accepted limitation.
+async function fetchWithSearch(
+  cardsRef: CollectionReference,
+  status: VocabStatusFilter,
+  q: string,
+  sevenDaysLater: Date,
+  skip: number,
+  pageSize: number,
+): Promise<{ total: number; items: VocabCardItem[] }> {
+  let query: Query = cardsRef
+  if (status === 'due_soon') {
+    query = cardsRef.where('due', '<=', sevenDaysLater)
+  } else if (status !== 'all') {
+    query = cardsRef.where('state', '==', STATUS_TO_FSRS[status])
+  }
+  const snap = await query.get()
+  const qLower = q.toLowerCase()
+  const filtered = snap.docs
+    .filter((doc) => {
+      const d = doc.data()
+      return (
+        ((d.englishWord as string | undefined) ?? '').toLowerCase().includes(qLower) ||
+        ((d.learningLanguageWord as string | undefined) ?? '').toLowerCase().includes(qLower)
+      )
+    })
+    .map(docToItem)
+  filtered.sort((a, b) => a.englishWord.localeCompare(b.englishWord))
+  return { total: filtered.length, items: filtered.slice(skip, skip + pageSize) }
+}
+
+function totalFromCounts(counts: VocabCounts, status: VocabStatusFilter): number {
+  switch (status) {
+    case 'new': return counts.new
+    case 'learning': return counts.learning
+    case 'review': return counts.review
+    case 'relearning': return counts.relearning
+    case 'due_soon': return counts.dueSoon
+    default: return counts.all
   }
 }
 
@@ -74,57 +135,22 @@ export async function fetchVocabCards(params: FetchVocabCardsParams): Promise<Vo
 
   const db = getAdminFirestore()
   const parentRef = db.collection('student_vocab').doc(studentUid)
-  const cardsRef = parentRef.collection('cards')
+  const cardsRef = parentRef.collection('cards') as CollectionReference
 
-  const now = new Date()
-  const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-
-  // counts are always global (unaffected by current filter/search)
-  const counts = await fetchCounts(parentRef, cardsRef, sevenDaysLater)
-
-  let total: number
-  let items: VocabCardItem[]
+  const sevenDaysLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
   if (q) {
-    // In-memory search — works with existing schema.
-    // TODO: once englishWordLower / learningLanguageWordLower fields are populated,
-    // replace with Firestore prefix range queries for O(log n) instead of O(n).
-    const snap = await cardsRef.get()
-    const qLower = q.toLowerCase()
-    const filtered = snap.docs
-      .filter((doc) => {
-        const d = doc.data()
-        const matchesSearch =
-          (d.englishWord as string ?? '').toLowerCase().includes(qLower) ||
-          (d.learningLanguageWord as string ?? '').toLowerCase().includes(qLower)
-        if (!matchesSearch) return false
-        if (status === 'all') return true
-        if (status === 'due_soon') {
-          const due = (d.due as Timestamp | undefined)?.toDate()
-          return !!due && due <= sevenDaysLater
-        }
-        return (FSRS_STATE_TO_STATUS[d.state as number] ?? 'new') === status
-      })
-      .map(docToItem)
-    ;({ total, items } = sortAndPage(filtered, skip, pageSize))
-  } else {
-    let query: Query = cardsRef
-    if (status === 'due_soon') {
-      query = cardsRef.where('due', '<=', sevenDaysLater)
-    } else if (status !== 'all') {
-      query = cardsRef.where('state', '==', STATUS_TO_FSRS[status])
-    }
-
-    const snap = await query.get()
-    ;({ total, items } = sortAndPage(snap.docs.map(docToItem), skip, pageSize))
+    const [counts, { total, items }] = await Promise.all([
+      fetchCounts(parentRef, cardsRef, sevenDaysLater),
+      fetchWithSearch(cardsRef, status, q, sevenDaysLater, skip, pageSize),
+    ])
+    return { total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)), items, counts }
   }
 
-  return {
-    total,
-    page,
-    pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize)),
-    items,
-    counts,
-  }
+  const [counts, items] = await Promise.all([
+    fetchCounts(parentRef, cardsRef, sevenDaysLater),
+    fetchPage(cardsRef, status, sevenDaysLater, skip, pageSize),
+  ])
+  const total = totalFromCounts(counts, status)
+  return { total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)), items, counts }
 }
