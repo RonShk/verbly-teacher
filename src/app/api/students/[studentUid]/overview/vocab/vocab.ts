@@ -5,10 +5,10 @@ import { isInstantOnDate } from '@/lib/server/dayBounds'
 import type { PracticeStatus,VocabHealthSummary,VocabTodaySummary } from '@/types/student-overview'
 
 
-const FSRS_NEW = 0
-const FSRS_LEARNING = 1
-const FSRS_REVIEW = 2
-const FSRS_RELEARNING = 3
+export const FSRS_NEW = 0
+export const FSRS_LEARNING = 1
+export const FSRS_REVIEW = 2
+export const FSRS_RELEARNING = 3
 
 export interface VocabOverviewResult {
   health: VocabHealthSummary
