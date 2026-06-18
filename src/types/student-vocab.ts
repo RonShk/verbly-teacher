@@ -7,6 +7,7 @@ export interface VocabCardItem {
   spanishWord: string
   status: VocabStatus
   lastReviewedAt: string | null
+  dueAt: string | null
 }
 
 export interface VocabCounts {

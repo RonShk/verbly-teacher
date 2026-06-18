@@ -31,12 +31,14 @@ export interface FetchVocabCardsParams {
 function docToItem(doc: QueryDocumentSnapshot): VocabCardItem {
   const d = doc.data()
   const lastReview = d.lastReview as Timestamp | null | undefined
+  const due = d.due as Timestamp | null | undefined
   return {
     id: doc.id,
     englishWord: d.englishWord ?? '',
     spanishWord: d.learningLanguageWord ?? '',
     status: FSRS_STATE_TO_STATUS[d.state as number] ?? 'new',
     lastReviewedAt: lastReview ? lastReview.toDate().toISOString() : null,
+    dueAt: due ? due.toDate().toISOString() : null,
   }
 }
 
