@@ -5,7 +5,7 @@ export default function Footer() {
     <footer className="flex items-center justify-between border-t border-white/10 bg-[#0a0a0a] px-6 py-4 text-sm text-white/40">
       <span>© 2026 Verbly. All rights reserved.</span>
       <nav className="flex gap-8">
-        <Link href="/support" className="transition-colors hover:text-white/70">
+        <Link href="/contact" className="transition-colors hover:text-white/70">
           Contact Support
         </Link>
         <Link href="/privacy-policy" className="transition-colors hover:text-white/70">
