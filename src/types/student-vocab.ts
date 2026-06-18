@@ -10,7 +10,7 @@ export interface VocabCardItem {
 }
 
 export interface VocabCounts {
-  all: number
+  totalWords: number
   new: number
   learning: number
   review: number
@@ -19,10 +19,9 @@ export interface VocabCounts {
 }
 
 export interface VocabListResponse {
-  total: number
+  totalQueryMatchCount: number
   page: number
-  pageSize: number
   totalPages: number
-  items: VocabCardItem[]
+  words: VocabCardItem[]
   counts: VocabCounts
 }

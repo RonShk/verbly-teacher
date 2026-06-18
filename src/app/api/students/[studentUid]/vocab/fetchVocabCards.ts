@@ -53,7 +53,7 @@ async function fetchCounts(
   const d = parentSnap.data() ?? {}
   const sc = (d.stateCounts ?? {}) as Record<string, number>
   return {
-    all: (d.totalCards as number | undefined) ?? 0,
+    totalWords: (d.totalCards as number | undefined) ?? 0,
     new: sc.new ?? 0,
     learning: sc.learning ?? 0,
     review: sc.review ?? 0,
@@ -95,7 +95,7 @@ async function fetchWithSearch(
   sevenDaysLater: Date,
   skip: number,
   pageSize: number,
-): Promise<{ total: number; items: VocabCardItem[] }> {
+): Promise<{ totalQueryMatchCount: number; words: VocabCardItem[] }> {
   let query: Query = cardsRef
   if (status === 'due_soon') {
     query = cardsRef.where('due', '<=', sevenDaysLater)
@@ -114,18 +114,26 @@ async function fetchWithSearch(
     })
     .map(docToItem)
   filtered.sort((a, b) => a.englishWord.localeCompare(b.englishWord))
-  return { total: filtered.length, items: filtered.slice(skip, skip + pageSize) }
+  return {
+    totalQueryMatchCount: filtered.length,
+    words: filtered.slice(skip, skip + pageSize),
+  }
 }
 
-function totalFromCounts(counts: VocabCounts, status: VocabStatusFilter): number {
+function totalQueryMatchFromCounts(counts: VocabCounts, status: VocabStatusFilter): number {
   switch (status) {
     case 'new': return counts.new
     case 'learning': return counts.learning
     case 'review': return counts.review
     case 'relearning': return counts.relearning
     case 'due_soon': return counts.dueSoon
-    default: return counts.all
+    default: return counts.totalWords
   }
+}
+
+function computeTotalPages(totalQueryMatchCount: number, pageSize: number): number {
+  if (totalQueryMatchCount === 0) return 0
+  return Math.ceil(totalQueryMatchCount / pageSize)
 }
 
 export async function fetchVocabCards(params: FetchVocabCardsParams): Promise<VocabListResponse> {
@@ -140,17 +148,29 @@ export async function fetchVocabCards(params: FetchVocabCardsParams): Promise<Vo
   const sevenDaysLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
   if (q) {
-    const [counts, { total, items }] = await Promise.all([
+    const [counts, { totalQueryMatchCount, words }] = await Promise.all([
       fetchCounts(parentRef, cardsRef, sevenDaysLater),
       fetchWithSearch(cardsRef, status, q, sevenDaysLater, skip, pageSize),
     ])
-    return { total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)), items, counts }
+    return {
+      totalQueryMatchCount,
+      page,
+      totalPages: computeTotalPages(totalQueryMatchCount, pageSize),
+      words,
+      counts,
+    }
   }
 
-  const [counts, items] = await Promise.all([
+  const [counts, words] = await Promise.all([
     fetchCounts(parentRef, cardsRef, sevenDaysLater),
     fetchPage(cardsRef, status, sevenDaysLater, skip, pageSize),
   ])
-  const total = totalFromCounts(counts, status)
-  return { total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)), items, counts }
+  const totalQueryMatchCount = totalQueryMatchFromCounts(counts, status)
+  return {
+    totalQueryMatchCount,
+    page,
+    totalPages: computeTotalPages(totalQueryMatchCount, pageSize),
+    words,
+    counts,
+  }
 }
