@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams } from 'next/navigation'
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,46 +16,28 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { clientAuth } from '@/lib/firebase/client'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import type { VocabCardItem, VocabListResponse, VocabStatusFilter } from '@/types/student-vocab'
 
-// ---------------------------------------------------------------------------
-// Types & mock data
-// ---------------------------------------------------------------------------
-
-type VocabStatus = 'NEW' | 'LEARNING' | 'REVIEW' | 'RELEARNING'
-
-const MOCK_WORDS: {
-  id: string
-  english: string
-  spanish: string
-  status: VocabStatus
-  lastReviewed: string | null
-}[] = [
-  { id: '1',  english: 'passport',     spanish: 'el pasaporte',              status: 'REVIEW',     lastReviewed: '2h ago' },
-  { id: '2',  english: 'suitcase',     spanish: 'la maleta',                 status: 'LEARNING',   lastReviewed: 'Yesterday' },
-  { id: '3',  english: 'flight',       spanish: 'el vuelo',                  status: 'NEW',        lastReviewed: null },
-  { id: '4',  english: 'boarding pass', spanish: 'la tarjeta de embarque',   status: 'REVIEW',     lastReviewed: '4h ago' },
-  { id: '5',  english: 'airport',      spanish: 'el aeropuerto',             status: 'REVIEW',     lastReviewed: '2 days ago' },
-  { id: '6',  english: 'customs',      spanish: 'la aduana',                 status: 'RELEARNING', lastReviewed: '1h ago' },
-  { id: '7',  english: 'gate',         spanish: 'la puerta',                 status: 'NEW',        lastReviewed: null },
-  { id: '8',  english: 'delay',        spanish: 'el retraso',                status: 'LEARNING',   lastReviewed: 'Yesterday' },
-  { id: '9',  english: 'luggage',      spanish: 'el equipaje',               status: 'REVIEW',     lastReviewed: '3h ago' },
-  { id: '10', english: 'ticket',       spanish: 'el billete',                status: 'LEARNING',   lastReviewed: '2 days ago' },
-]
-
-const VOCAB_STATUS_STYLES: Record<VocabStatus, { bg: string; text: string; label: string }> = {
-  NEW:        { bg: 'rgba(255,255,255,0.06)', text: '#6B6B6B', label: 'NEW' },
-  LEARNING:   { bg: 'rgba(141,206,249,0.18)', text: '#8DCEF9', label: 'LEARNING' },
-  REVIEW:     { bg: 'rgba(29,158,117,0.10)',  text: '#61C796', label: 'REVIEW' },
-  RELEARNING: { bg: 'rgba(186,117,23,0.10)',  text: '#F09F27', label: 'RELEARNING' },
+const VOCAB_STATUS_STYLES: Record<VocabCardItem['status'], { bg: string; text: string; label: string }> = {
+  new:        { bg: 'rgba(255,255,255,0.06)', text: '#6B6B6B', label: 'NEW' },
+  learning:   { bg: 'rgba(141,206,249,0.18)', text: '#8DCEF9', label: 'LEARNING' },
+  review:     { bg: 'rgba(29,158,117,0.10)',  text: '#61C796', label: 'REVIEW' },
+  relearning: { bg: 'rgba(186,117,23,0.10)',  text: '#F09F27', label: 'RELEARNING' },
 }
 
-type VocabFilter = 'all' | 'new' | 'learning' | 'review' | 'relearning' | 'due_soon'
-type VocabSortKey = 'status' | 'lastReviewed' | null
+type VocabSortKey = 'status' | 'lastReviewed' | 'dueDate' | null
 type SortDir = 'asc' | 'desc'
 
 const PAGE_SIZE = 10
 
-const FILTER_LABELS: { id: VocabFilter; label: string }[] = [
+const FILTER_LABELS: { id: VocabStatusFilter; label: string }[] = [
   { id: 'all',        label: 'All' },
   { id: 'new',        label: 'New' },
   { id: 'learning',   label: 'Learning' },
@@ -63,8 +46,8 @@ const FILTER_LABELS: { id: VocabFilter; label: string }[] = [
   { id: 'due_soon',   label: 'Due soon' },
 ]
 
-const STATUS_ORDER: Record<VocabStatus, number> = {
-  NEW: 0, LEARNING: 1, REVIEW: 2, RELEARNING: 3,
+const STATUS_ORDER: Record<VocabCardItem['status'], number> = {
+  new: 0, learning: 1, review: 2, relearning: 3,
 }
 
 function getPaginationPages(current: number, total: number): (number | '...')[] {
@@ -84,57 +67,101 @@ function getPaginationPages(current: number, total: number): (number | '...')[] 
   return result
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
+function formatLastReviewed(iso: string | null): string {
+  if (!iso) return 'Never'
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days === 1) return 'Yesterday'
+  return `${days} days ago`
+}
+
+function formatDueDate(iso: string | null): string {
+  if (!iso) return '—'
+  const diff = new Date(iso).getTime() - Date.now()
+  const days = Math.round(diff / 86_400_000)
+  if (days < -1) return `${Math.abs(days)} days ago`
+  if (days === -1) return 'Yesterday'
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Tomorrow'
+  return `In ${days} days`
+}
 
 export default function VocabularyPage() {
-  const [filter, setFilter] = useState<VocabFilter>('all')
+  const { studentUid } = useParams<{ studentUid: string }>()
+  const [filter, setFilter] = useState<VocabStatusFilter>('all')
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [sortKey, setSortKey] = useState<VocabSortKey>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [page, setPage] = useState(1)
 
-  const filtered = MOCK_WORDS.filter((w) => {
-    if (filter === 'new' && w.status !== 'NEW') return false
-    if (filter === 'learning' && w.status !== 'LEARNING') return false
-    if (filter === 'review' && w.status !== 'REVIEW') return false
-    if (filter === 'relearning' && w.status !== 'RELEARNING') return false
-    if (search) {
-      const q = search.toLowerCase()
-      if (!w.english.includes(q) && !w.spanish.includes(q)) return false
-    }
-    return true
-  })
+  const [data, setData] = useState<VocabListResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const fetchData = useCallback(async () => {
+    const user = clientAuth.currentUser
+    if (!user) return
+    setLoading(true)
+    const token = await user.getIdToken()
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+      status: filter,
+    })
+    if (debouncedSearch) params.set('q', debouncedSearch)
+    const res = await fetch(`/api/students/${studentUid}/vocab?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) setData(await res.json())
+    setLoading(false)
+  }, [studentUid, page, filter, debouncedSearch])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const words = data?.words ?? []
 
   const sorted = sortKey
-    ? [...filtered].sort((a, b) => {
+    ? [...words].sort((a, b) => {
         let cmp = 0
         if (sortKey === 'status') {
           cmp = STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+        } else if (sortKey === 'lastReviewed') {
+          if (!a.lastReviewedAt && !b.lastReviewedAt) cmp = 0
+          else if (!a.lastReviewedAt) cmp = 1
+          else if (!b.lastReviewedAt) cmp = -1
+          else cmp = a.lastReviewedAt.localeCompare(b.lastReviewedAt)
         } else {
-          if (a.lastReviewed === null && b.lastReviewed === null) cmp = 0
-          else if (a.lastReviewed === null) cmp = 1
-          else if (b.lastReviewed === null) cmp = -1
-          else cmp = a.lastReviewed.localeCompare(b.lastReviewed)
+          if (!a.dueAt && !b.dueAt) cmp = 0
+          else if (!a.dueAt) cmp = 1
+          else if (!b.dueAt) cmp = -1
+          else cmp = a.dueAt.localeCompare(b.dueAt)
         }
         return sortDir === 'asc' ? cmp : -cmp
       })
-    : filtered
+    : words
 
-  const totalPages = Math.max(1, Math.ceil(312 / PAGE_SIZE))
+  const totalWords = data?.counts.totalWords ?? 0
+  const totalQueryMatchCount = data?.totalQueryMatchCount ?? 0
+  const totalPages = Math.max(1, data?.totalPages ?? 1)
   const pageStart = (page - 1) * PAGE_SIZE
-  const pageRows = sorted.slice(pageStart, pageStart + PAGE_SIZE)
 
   function handleSort(key: VocabSortKey) {
     if (sortKey === key) {
-      if (sortDir === 'asc') { setSortDir('desc') }
+      if (sortDir === 'asc') setSortDir('desc')
       else { setSortKey(null); setSortDir('asc') }
     } else {
       setSortKey(key)
       setSortDir('asc')
     }
-    setPage(1)
   }
 
   function SortIcon({ col }: { col: VocabSortKey }) {
@@ -149,7 +176,9 @@ export default function VocabularyPage() {
     <div className="flex flex-col gap-5 p-8">
       {/* Toolbar */}
       <div className="flex items-center justify-between">
-        <span className="text-2xl font-bold font-heading text-foreground">312 words</span>
+        <span className="text-2xl font-bold font-heading text-foreground">
+          {loading && !data ? '—' : `${totalWords} words`}
+        </span>
         <div className="flex items-center gap-2">
           <Button className="border border-[rgba(141,206,249,0.3)] bg-transparent font-medium text-[#C8E8FC] hover:border-[rgba(141,206,249,0.5)] hover:bg-[rgba(141,206,249,0.05)]">
             <Sparkles className="h-3.5 w-3.5" />
@@ -199,11 +228,12 @@ export default function VocabularyPage() {
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <table className="w-full table-fixed">
           <colgroup>
-            <col className="w-[28%]" />
-            <col className="w-[28%]" />
-            <col className="w-[18%]" />
-            <col className="w-[20%]" />
-            <col className="w-[6%]" />
+            <col className="w-[23%]" />
+            <col className="w-[23%]" />
+            <col className="w-[14%]" />
+            <col className="w-[17%]" />
+            <col className="w-[15%]" />
+            <col className="w-[8%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-border">
@@ -224,18 +254,36 @@ export default function VocabularyPage() {
               >
                 LAST REVIEWED <SortIcon col="lastReviewed" />
               </th>
-              <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.07em] text-muted-foreground">
+              <th
+                className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.07em] text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                onClick={() => handleSort('dueDate')}
+              >
+                DUE DATE <SortIcon col="dueDate" />
+              </th>
+              <th className="px-4 py-3 text-center text-[11px] font-medium uppercase tracking-[0.07em] text-muted-foreground">
                 ACTIONS
               </th>
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((word) => {
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  Loading...
+                </td>
+              </tr>
+            ) : sorted.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  No words found.
+                </td>
+              </tr>
+            ) : sorted.map((word) => {
               const s = VOCAB_STATUS_STYLES[word.status]
               return (
                 <tr key={word.id} className="transition-colors hover:bg-white/[0.025]">
-                  <td className="px-4 py-2.5 text-sm font-medium text-foreground">{word.english}</td>
-                  <td className="px-4 py-2.5 text-sm text-muted-foreground">{word.spanish}</td>
+                  <td className="px-4 py-2.5 text-sm font-medium text-foreground">{word.englishWord}</td>
+                  <td className="px-4 py-2.5 text-sm text-muted-foreground">{word.spanishWord}</td>
                   <td className="px-4 py-2.5">
                     <span
                       className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
@@ -245,12 +293,24 @@ export default function VocabularyPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-sm text-muted-foreground">
-                    {word.lastReviewed ?? 'Never'}
+                    {formatLastReviewed(word.lastReviewedAt)}
                   </td>
-                  <td className="px-4 py-2.5">
-                    <button className="text-muted-foreground transition-colors hover:text-foreground">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
+                  <td className="px-4 py-2.5 text-sm text-muted-foreground">
+                    {formatDueDate(word.dueAt)}
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="text-muted-foreground transition-colors hover:text-foreground">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-40">
+                        <DropdownMenuItem variant="destructive">
+                          Delete card
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               )
@@ -261,7 +321,9 @@ export default function VocabularyPage() {
         {/* Pagination footer */}
         <div className="flex items-center justify-between border-t border-border px-4 py-3">
           <span className="text-sm text-muted-foreground">
-            Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, 312)} of 312
+            {data
+              ? `Showing ${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, totalQueryMatchCount)} of ${totalQueryMatchCount}`
+              : ''}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -290,7 +352,7 @@ export default function VocabularyPage() {
               )
             )}
             <button
-              disabled={page === totalPages}
+              disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
               className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
             >
