@@ -1,9 +1,9 @@
-import type { QueryDocumentSnapshot, Timestamp } from 'firebase-admin/firestore'
+import type { DocumentData, Timestamp } from 'firebase-admin/firestore'
+import { Timestamp as AdminTimestamp } from 'firebase-admin/firestore'
 
 import { getAdminFirestore } from '@/lib/firebase/admin'
-import { isInstantOnDate } from '@/lib/server/dayBounds'
-import type { PracticeStatus,VocabHealthSummary,VocabTodaySummary } from '@/types/student-overview'
-
+import { getClientLocalDayTimestampBounds } from '@/lib/server/dayBounds'
+import type { PracticeStatus, VocabHealthSummary, VocabTodaySummary } from '@/types/student-overview'
 
 export const FSRS_NEW = 0
 export const FSRS_LEARNING = 1
@@ -21,32 +21,40 @@ function vocabStatus(reviewedCount: number): PracticeStatus {
   return 'complete'
 }
 
-function buildFromVocabDocs(vocabDocs: QueryDocumentSnapshot[], todayStr: string, utcOffsetMinutes: number): VocabOverviewResult {
-  const health = { new: 0, learning: 0, review: 0, relearning: 0, total: 0 }
-
-  //determining the state of each word (new,learning,reviewing,relearning)
-  for (const doc of vocabDocs) {
-    const state = typeof doc.data().state === 'number' ? doc.data().state : -1
-    if (state === FSRS_NEW) health.new += 1
-    else if (state === FSRS_LEARNING) health.learning += 1
-    else if (state === FSRS_REVIEW) health.review += 1
-    else if (state === FSRS_RELEARNING) health.relearning += 1
-    health.total += 1
+function healthFromParent(data: DocumentData | undefined): VocabHealthSummary {
+  const stateCounts = (data?.stateCounts ?? {}) as Record<string, unknown>
+  return {
+    new: typeof stateCounts.new === 'number' ? stateCounts.new : 0,
+    learning: typeof stateCounts.learning === 'number' ? stateCounts.learning : 0,
+    review: typeof stateCounts.review === 'number' ? stateCounts.review : 0,
+    relearning: typeof stateCounts.relearning === 'number' ? stateCounts.relearning : 0,
+    total: typeof data?.totalCards === 'number' ? data.totalCards : 0,
   }
+}
 
-  let reviewedCount = 0
-  let lastReviewAt: Date | null = null
+export async function fetchVocabOverview(
+  studentUid: string,
+  todayStr: string,
+  utcOffsetMinutes: number,
+): Promise<VocabOverviewResult> {
+  const db = getAdminFirestore()
+  const cardsRef = db.collection('student_vocab').doc(studentUid).collection('cards')
 
-  for (const doc of vocabDocs) {
-    const lastReview = doc.data().lastReview as Timestamp | undefined
-    if (!lastReview) continue
+  const { start, end } = getClientLocalDayTimestampBounds(todayStr, utcOffsetMinutes)
 
-    const reviewed = lastReview.toDate()
-    if (!lastReviewAt || reviewed > lastReviewAt) lastReviewAt = reviewed
-    if (isInstantOnDate(reviewed, todayStr, utcOffsetMinutes)) {
-      reviewedCount += 1
-    }
-  }
+  const [parentSnap, reviewedTodaySnap] = await Promise.all([
+    db.collection('student_vocab').doc(studentUid).get(),
+    cardsRef
+      .where('lastReview', '>=', AdminTimestamp.fromDate(start))
+      .where('lastReview', '<', AdminTimestamp.fromDate(end))
+      .count()
+      .get(),
+  ])
+
+  const parentData = parentSnap.data()
+  const health = healthFromParent(parentData)
+  const lastReview = parentData?.lastReviewAt as Timestamp | undefined
+  const reviewedCount = reviewedTodaySnap.data().count
 
   return {
     health,
@@ -54,18 +62,6 @@ function buildFromVocabDocs(vocabDocs: QueryDocumentSnapshot[], todayStr: string
       status: vocabStatus(reviewedCount),
       reviewedCount,
     },
-    lastReviewAt,
+    lastReviewAt: lastReview?.toDate() ?? null,
   }
-}
-
-export async function fetchVocabOverview(studentUid: string, todayStr: string, utcOffsetMinutes: number,): Promise<VocabOverviewResult> {
-  const db = getAdminFirestore()
-
-  const cardsSnap = await db
-    .collection('student_vocab')
-    .doc(studentUid)
-    .collection('cards')
-    .get()
-
-  return buildFromVocabDocs(cardsSnap.docs, todayStr, utcOffsetMinutes)
 }
