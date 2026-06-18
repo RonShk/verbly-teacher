@@ -488,7 +488,7 @@ export function StudentsTable() {
         return (
           <div className="flex justify-end">
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -592,7 +592,8 @@ export function StudentsTable() {
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
-                    className="border-border last:border-0 hover:bg-white/3"
+                    className="cursor-pointer border-border last:border-0 hover:bg-white/3"
+                    onClick={() => router.push(`/students/${row.original.uid}`)}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="px-4 py-3">
