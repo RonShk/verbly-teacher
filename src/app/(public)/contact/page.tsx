@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Mail, Globe } from "lucide-react"
+import { Mail } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -41,6 +41,8 @@ export default function ContactPage() {
   })
   const [errors, setErrors] = useState<Errors>({})
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const { name, value } = e.target
@@ -50,14 +52,36 @@ export default function ContactPage() {
     }
   }
 
-  function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     const errs = validate(form)
     if (Object.keys(errs).length > 0) {
       setErrors(errs)
       return
     }
-    setSubmitted(true)
+
+    setSubmitting(true)
+    setServerError(null)
+
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setServerError(data.error ?? 'Something went wrong. Please try again.')
+        return
+      }
+
+      setSubmitted(true)
+    } catch {
+      setServerError('Could not reach the server. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -78,16 +102,6 @@ export default function ContactPage() {
               <a href="mailto:verblysupport@gmail.com" className="group flex items-center gap-3">
                 <Mail className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span className="group-hover:underline">verblysupport@gmail.com</span>
-              </a>
-              <a
-                href="https://verbly.app"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="verbly.app (opens in new tab)"
-                className="group flex items-center gap-3"
-              >
-                <Globe className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span className="group-hover:underline">verbly.app</span>
               </a>
             </div>
           </div>
@@ -127,7 +141,7 @@ export default function ContactPage() {
                     <Input
                       id="firstName"
                       name="firstName"
-                      placeholder="Jordan"
+                      placeholder="John"
                       value={form.firstName}
                       onChange={handleChange}
                       aria-invalid={!!errors.firstName}
@@ -137,7 +151,7 @@ export default function ContactPage() {
                     <Input
                       id="lastName"
                       name="lastName"
-                      placeholder="Kim"
+                      placeholder="Doe"
                       value={form.lastName}
                       onChange={handleChange}
                       aria-invalid={!!errors.lastName}
@@ -150,7 +164,7 @@ export default function ContactPage() {
                     id="email"
                     name="email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder="name@example.com"
                     value={form.email}
                     onChange={handleChange}
                     aria-invalid={!!errors.email}
@@ -161,7 +175,7 @@ export default function ContactPage() {
                   <Input
                     id="subject"
                     name="subject"
-                    placeholder="Question about Verbly"
+                    placeholder="How can we help?"
                     value={form.subject}
                     onChange={handleChange}
                     aria-invalid={!!errors.subject}
@@ -173,7 +187,7 @@ export default function ContactPage() {
                     id="message"
                     name="message"
                     rows={4}
-                    placeholder="Tell us how we can help…"
+                    placeholder="What's going on? Include any details that might help us."
                     value={form.message}
                     onChange={handleChange}
                     aria-invalid={!!errors.message}
@@ -185,8 +199,12 @@ export default function ContactPage() {
                   />
                 </FieldGroup>
 
-                <Button type="submit" size="lg" className="w-full">
-                  Send message
+                {serverError && (
+                  <p className="text-sm text-destructive">{serverError}</p>
+                )}
+
+                <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+                  {submitting ? 'Sending…' : 'Send message'}
                 </Button>
               </form>
             )}
