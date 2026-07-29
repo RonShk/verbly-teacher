@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Roboto } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { SiteFooter } from "@/components/SiteFooter";
+import Footer from "@/components/Footer";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const roboto = Roboto({
@@ -28,7 +28,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <main className="flex flex-1 flex-col">{children}</main>
-        <SiteFooter />
+        <Footer />
       </body>
     </html>
   );
