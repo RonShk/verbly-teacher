@@ -171,7 +171,7 @@ export function ChatView() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#0a0a0a]">
+    <div className="flex h-dvh overflow-hidden bg-[#0a0a0a]">
 
       {/* ── Sidebar ── */}
       <aside className="flex w-[240px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0a0a]">
@@ -243,7 +243,7 @@ export function ChatView() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-6">
             {messages.map(renderMessage)}
             <div ref={bottomRef} />
