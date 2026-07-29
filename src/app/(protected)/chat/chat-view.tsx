@@ -171,62 +171,73 @@ export function ChatView() {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[#0a0a0a]">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#0a0a0a]">
 
-      {/* ── Sidebar ── */}
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0a0a]">
-        <Link href="/" className="flex h-14 items-center border-b border-white/[0.06] px-5 transition-opacity hover:opacity-80">
+      {/* ── Header (matches the site-wide Navbar) ── */}
+      <header className="relative flex h-14 w-full shrink-0 items-center border-b border-border bg-card px-6">
+        <Link href="/" className="mr-8 shrink-0 transition-opacity hover:opacity-80">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Verbly" className="h-[28px] w-auto" />
+          <img src="/logo.svg" alt="Verbly" className="h-[22px] w-auto" />
         </Link>
 
-        <div className="flex-1 overflow-y-auto px-3 py-4">
-          <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b6b6b]">
-            History
-          </p>
-          <div className="flex flex-col gap-0.5">
-            {HISTORY.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                  item.active
-                    ? 'bg-white/[0.06] text-[#f0f0f0]'
-                    : 'text-[#6b6b6b] hover:bg-white/[0.04] hover:text-[#f0f0f0]'
-                }`}
-              >
-                {item.icon === 'clock'
-                  ? <Clock className="h-3.5 w-3.5 shrink-0" />
-                  : <MessageSquare className="h-3.5 w-3.5 shrink-0" />}
-                <span className="truncate">{item.label}</span>
-              </button>
-            ))}
-          </div>
+        <nav className="flex items-center gap-1">
+          {NAV_TABS.map((tab) => (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={[
+                "relative px-3 py-1.5 text-sm font-medium transition-colors",
+                tab.active ? "text-[#8DCEF9]" : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              {tab.label}
+              {tab.active && (
+                <span className="absolute inset-x-3 bottom-0 h-px rounded-full bg-[#8DCEF9]" />
+              )}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-xs font-semibold text-white">
+          TA
         </div>
-      </aside>
+      </header>
 
-      {/* ── Main ── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* ── Body (sidebar + main) ── */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
 
-        {/* Top bar */}
-        <div className="relative flex h-14 shrink-0 items-center border-b border-white/[0.06] px-5">
-          <nav className="flex items-center gap-1">
-            {NAV_TABS.map((tab) => (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                  tab.active
-                    ? 'font-semibold text-[#f0f0f0]'
-                    : 'text-[#6b6b6b] hover:text-[#f0f0f0]'
-                }`}
-              >
-                {tab.label}
-              </Link>
-            ))}
-          </nav>
+        {/* ── Sidebar ── */}
+        <aside className="flex w-[240px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0a0a]">
+          <div className="flex-1 overflow-y-auto px-3 py-4">
+            <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b6b6b]">
+              History
+            </p>
+            <div className="flex flex-col gap-0.5">
+              {HISTORY.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                    item.active
+                      ? 'bg-white/[0.06] text-[#f0f0f0]'
+                      : 'text-[#6b6b6b] hover:bg-white/[0.04] hover:text-[#f0f0f0]'
+                  }`}
+                >
+                  {item.icon === 'clock'
+                    ? <Clock className="h-3.5 w-3.5 shrink-0" />
+                    : <MessageSquare className="h-3.5 w-3.5 shrink-0" />}
+                  <span className="truncate">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </aside>
 
-          <div className="absolute left-1/2 -translate-x-1/2">
+        {/* ── Main ── */}
+        <div className="flex min-w-0 flex-1 flex-col">
+
+          {/* Student selector */}
+          <div className="flex h-12 shrink-0 items-center justify-center">
             <button
               type="button"
               className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-[#161616] px-3.5 py-1.5 text-sm transition-colors hover:bg-[#1e1e1e]"
@@ -237,62 +248,58 @@ export function ChatView() {
             </button>
           </div>
 
-          <div className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-xs font-semibold text-white">
-            TA
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-6">
-            {messages.map(renderMessage)}
-            <div ref={bottomRef} />
-          </div>
-        </div>
-
-        {/* Bottom */}
-        <div className="shrink-0 pb-4">
-          <div className="mx-auto w-full max-w-2xl px-6">
-            <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-              {ACTION_CHIPS.map(({ icon: Icon, label }) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setInput(label)}
-                  className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-[#161616] px-3 py-1.5 text-xs font-medium text-[#6b6b6b] transition-colors hover:border-white/[0.15] hover:text-[#f0f0f0]"
-                >
-                  <Icon className="h-3 w-3 shrink-0" />
-                  {label}
-                </button>
-              ))}
+          {/* Messages */}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-6">
+              {messages.map(renderMessage)}
+              <div ref={bottomRef} />
             </div>
-
-            <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#161616] px-4 py-3">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="How can I help you with Maria's learning today?"
-              className="flex-1 bg-transparent text-sm text-[#f0f0f0] outline-none placeholder:text-[#444]"
-            />
-            <button
-              type="button"
-              onClick={send}
-              disabled={!input.trim()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#8DCEF9] text-[#0a1a2a] transition-colors hover:bg-[#A8DAFC] disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ArrowUp className="h-4 w-4" />
-            </button>
           </div>
 
-          <p className="mt-3 text-center text-xs text-[#444]">
-            AskVerbly can make mistakes. Check important info.
-          </p>
+          {/* Bottom */}
+          <div className="shrink-0 pb-4">
+            <div className="mx-auto w-full max-w-2xl px-6">
+              <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+                {ACTION_CHIPS.map(({ icon: Icon, label }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setInput(label)}
+                    className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-[#161616] px-3 py-1.5 text-xs font-medium text-[#6b6b6b] transition-colors hover:border-white/[0.15] hover:text-[#f0f0f0]"
+                  >
+                    <Icon className="h-3 w-3 shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#161616] px-4 py-3">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="How can I help you with Maria's learning today?"
+                  className="flex-1 bg-transparent text-sm text-[#f0f0f0] outline-none placeholder:text-[#444]"
+                />
+                <button
+                  type="button"
+                  onClick={send}
+                  disabled={!input.trim()}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#8DCEF9] text-[#0a1a2a] transition-colors hover:bg-[#A8DAFC] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p className="mt-3 text-center text-xs text-[#444]">
+                AskVerbly can make mistakes. Check important info.
+              </p>
+            </div>
           </div>
+
         </div>
-
       </div>
     </div>
   )
