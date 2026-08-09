@@ -1,8 +1,13 @@
 import type { CollectionReference, Query, QueryDocumentSnapshot, Timestamp } from 'firebase-admin/firestore'
 
 import { getAdminFirestore } from '@/lib/firebase/admin'
-import { FSRS_LEARNING, FSRS_NEW, FSRS_RELEARNING, FSRS_REVIEW } from '../overview/vocab/vocab'
 import type { VocabCardItem, VocabCounts, VocabListResponse, VocabStatusFilter } from '@/types/student-vocab'
+
+// FSRS spaced-repetition states as stored on card docs.
+const FSRS_NEW = 0
+const FSRS_LEARNING = 1
+const FSRS_REVIEW = 2
+const FSRS_RELEARNING = 3
 
 const PAGE_SIZE_CAP = 50
 
@@ -138,7 +143,9 @@ function computeTotalPages(totalQueryMatchCount: number, pageSize: number): numb
   return Math.ceil(totalQueryMatchCount / pageSize)
 }
 
-export async function fetchVocabCards(params: FetchVocabCardsParams): Promise<VocabListResponse> {
+export async function fetchVocabCards(
+  params: FetchVocabCardsParams,
+): Promise<Omit<VocabListResponse, 'student'>> {
   const { studentUid, page, status, q } = params
   const pageSize = Math.min(Math.max(1, params.pageSize), PAGE_SIZE_CAP)
   const skip = (page - 1) * pageSize

@@ -19,10 +19,18 @@ export interface VocabCounts {
   dueSoon: number
 }
 
+/** Identity of the student the list belongs to (for the page header). */
+export interface VocabStudent {
+  name: string
+  email: string
+  linkedAt: string | null
+}
+
 export interface VocabListResponse {
   totalQueryMatchCount: number
   page: number
   totalPages: number
   words: VocabCardItem[]
   counts: VocabCounts
+  student: VocabStudent
 }

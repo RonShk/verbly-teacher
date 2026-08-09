@@ -31,6 +31,18 @@ export function getClientLocalDayTimestampBounds(
   return { start: new Date(startMs), end: new Date(endMs) }
 }
 
+/** Client-local calendar day (YYYY-MM-DD) that a UTC instant falls on. */
+export function localDayString(instant: Date, utcOffsetMinutes: number): string {
+  const offsetMs = utcOffsetMinutes * 60_000
+  return new Date(instant.getTime() + offsetMs).toISOString().slice(0, 10)
+}
+
+/** Day string shifted by deltaDays (e.g. -1 for the previous day). */
+export function shiftDayString(dayStr: string, deltaDays: number): string {
+  const [year, month, day] = dayStr.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + deltaDays)).toISOString().slice(0, 10)
+}
+
 export function parseTimezoneOffsetMinutes(
   searchParams: URLSearchParams,
 ): number {

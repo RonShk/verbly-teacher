@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import {
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
@@ -14,6 +16,7 @@ import {
   Plus,
   MoreHorizontal,
 } from 'lucide-react'
+import { deriveColor, deriveInitials } from '@/lib/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { clientAuth } from '@/lib/firebase/client'
@@ -172,10 +175,49 @@ export default function VocabularyPage() {
       : <ChevronDown className="inline h-3 w-3 ml-1" />
   }
 
+  const student = data?.student ?? null
+
   return (
     <div className="flex flex-col gap-5 p-8">
+      {/* Student header */}
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/students"
+          className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Students
+        </Link>
+        <div className="flex items-center gap-4">
+          <div
+            className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${deriveColor(studentUid)} text-lg font-semibold text-white`}
+          >
+            {student ? deriveInitials(student.name) : '…'}
+          </div>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-bold font-heading text-foreground">
+              {student?.name ?? <span className="opacity-40">Loading…</span>}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {student?.email ?? ''}
+              {student?.linkedAt && (
+                <>
+                  <span className="mx-2 opacity-40">•</span>
+                  Linked{' '}
+                  {new Date(student.linkedAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="mt-2 flex items-center justify-between">
         <span className="text-2xl font-bold font-heading text-foreground">
           {loading && !data ? '—' : `${totalWords} words`}
         </span>
