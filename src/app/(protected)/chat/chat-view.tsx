@@ -1,207 +1,210 @@
 'use client'
 
-import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
-import Link from 'next/link'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import {
-  MessageSquare, Clock, ChevronDown, CirclePlus,
-  Sparkles, ClipboardList, BarChart2, Lightbulb, ArrowUp,
+  ArrowUp, BarChart2, ClipboardList, Lightbulb, Loader2, MessageSquare, Sparkles, Square,
 } from 'lucide-react'
 
-// ── Types ────────────────────────────────────────────────────────────────────
+import { useRouter, useSearchParams } from 'next/navigation'
+import { onAuthStateChanged } from 'firebase/auth'
 
-type VocabCard   = { id: number; type: 'vocab-card' }
-type MetricsCard = { id: number; type: 'metrics-card' }
-type UserMsg     = { id: number; type: 'user'; content: string }
-type AssistantMsg = { id: number; type: 'assistant'; content: string }
-type Message = VocabCard | MetricsCard | UserMsg | AssistantMsg
-
-// ── Static data ──────────────────────────────────────────────────────────────
-
-const NAV_TABS = [
-  { label: 'Home', href: '/' },
-  { label: 'Students', href: '/students' },
-  { label: 'Chat', href: '/chat', active: true },
-]
-
-const HISTORY = [
-  { id: 1, label: 'Maria — travel vocab', icon: 'chat' as const, active: true },
-  { id: 2, label: 'James — lesson plan',  icon: 'chat' as const, active: false },
-  { id: 3, label: 'Verb conjugation drill', icon: 'clock' as const, active: false },
-]
-
-const VOCAB_TABLE = [
-  { spanish: 'Facturar equipaje',   english: 'Check-in luggage' },
-  { spanish: 'Tarjeta de embarque', english: 'Boarding pass' },
-  { spanish: 'Puerta de salida',    english: 'Departure gate' },
-]
+import { clientAuth } from '@/lib/firebase/client'
+import { Navbar } from '@/components/Navbar'
+import { LessonPlanCard } from './components/LessonPlanCard'
+import { StudentPicker, type RosterStudent } from './components/StudentPicker'
+import { VocabProposalCard } from './components/VocabProposalCard'
+import { Markdown } from './markdown'
+import { useChat, type ChatItem } from './useChat'
 
 const ACTION_CHIPS = [
-  { icon: Sparkles,      label: 'Suggest vocabulary' },
-  { icon: ClipboardList, label: 'Lesson plan' },
-  { icon: BarChart2,     label: 'Progress report' },
-  { icon: Lightbulb,     label: 'Homework ideas' },
+  { icon: Sparkles, label: 'Suggest vocabulary', prompt: 'Suggest new vocabulary words to add based on recent performance.' },
+  { icon: ClipboardList, label: 'Lesson plan', prompt: 'Create a lesson plan for our next lesson based on real metrics.' },
+  { icon: BarChart2, label: 'Progress report', prompt: 'Give me a progress report: activity, accuracy and trends.' },
+  { icon: Lightbulb, label: 'Homework ideas', prompt: 'Suggest homework ideas targeting current weak areas.' },
 ]
 
-const INITIAL_MESSAGES: Message[] = [
-  { id: 1, type: 'vocab-card' },
-  { id: 2, type: 'user', content: "Thanks! Also, can you check her production accuracy from the last lesson?" },
-  { id: 3, type: 'metrics-card' },
-]
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function VocabCardMsg() {
-  return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#161616] p-5">
-      <p className="text-sm leading-relaxed text-[#f0f0f0]">
-        Based on Maria&apos;s recent conversation transcripts, I&apos;ve identified 10 high-frequency
-        vocabulary items she struggled with during her &ldquo;At the Airport&rdquo; roleplay.
-      </p>
-      <p className="mt-3 text-sm text-[#f0f0f0]">Would you like to add these to her study deck?</p>
-
-      <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.06]">
-        <div className="grid grid-cols-2 border-b border-white/[0.06] bg-[#111111] px-4 py-2.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6b6b6b]">Spanish</span>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6b6b6b]">English</span>
-        </div>
-        {VOCAB_TABLE.map((row, i) => (
-          <div key={i} className="grid grid-cols-2 border-b border-white/[0.04] px-4 py-3 last:border-0">
-            <span className="text-sm text-[#8DCEF9]">{row.spanish}</span>
-            <span className="text-sm text-[#f0f0f0]">{row.english}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          className="flex items-center gap-2 rounded-xl bg-[#8DCEF9] px-4 py-2 text-sm font-medium text-[#0a1a2a] transition-colors hover:bg-[#A8DAFC]"
-        >
-          <CirclePlus className="h-3.5 w-3.5" />
-          Add 10 words to Maria&apos;s vocabulary
-        </button>
-        <button
-          type="button"
-          className="rounded-xl border border-white/[0.12] px-4 py-2 text-sm font-medium text-[#f0f0f0] transition-colors hover:bg-white/[0.04]"
-        >
-          Edit list
-        </button>
-      </div>
-    </div>
-  )
+async function fetchRoster(): Promise<RosterStudent[]> {
+  const user = clientAuth.currentUser
+  if (!user) return []
+  const token = await user.getIdToken()
+  const res = await fetch('/api/students/list', { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) return []
+  const data = (await res.json()) as { students: RosterStudent[] }
+  return data.students
 }
-
-function MetricsCardMsg() {
-  return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#161616] p-5">
-      <p className="text-sm leading-relaxed text-[#f0f0f0]">
-        Maria&apos;s oral production metrics for the &ldquo;Travel Fundamentals&rdquo; module show
-        steady improvement:
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="flex items-center gap-1.5 rounded-full bg-[rgba(29,158,117,0.10)] px-3 py-1 text-xs font-medium text-[#61C796]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#61C796]" />
-          Production · 88%
-        </span>
-        <span className="flex items-center gap-1.5 rounded-full bg-[rgba(141,206,249,0.12)] px-3 py-1 text-xs font-medium text-[#8DCEF9]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#8DCEF9]" />
-          Fluency · 74%
-        </span>
-        <span className="flex items-center gap-1.5 rounded-full bg-[rgba(29,158,117,0.10)] px-3 py-1 text-xs font-medium text-[#61C796]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#61C796]" />
-          Grammar · 92%
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function UserMsgBubble({ content }: { content: string }) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-sm rounded-2xl rounded-tr-sm bg-[#1A7AB5] px-4 py-3">
-        <p className="text-sm leading-relaxed text-white">{content}</p>
-      </div>
-    </div>
-  )
-}
-
-function AssistantMsgCard({ content }: { content: string }) {
-  return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#161616] p-5">
-      <p className="text-sm leading-relaxed text-[#f0f0f0]">{content}</p>
-    </div>
-  )
-}
-
-function renderMessage(msg: Message) {
-  switch (msg.type) {
-    case 'vocab-card':   return <VocabCardMsg key={msg.id} />
-    case 'metrics-card': return <MetricsCardMsg key={msg.id} />
-    case 'user':         return <UserMsgBubble key={msg.id} content={msg.content} />
-    case 'assistant':    return <AssistantMsgCard key={msg.id} content={msg.content} />
-  }
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
 
 export function ChatView() {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
+  // Set by "Ask Verbly for suggestions" on the vocabulary page: which student to
+  // open on, and the question to ask straight away.
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const requestedUid = searchParams.get('student')
+  const requestedPrompt = searchParams.get('prompt')
+  const autoSentRef = useRef(false)
+
+  const [students, setStudents] = useState<RosterStudent[] | null>(null)
+  const [selectedUid, setSelectedUid] = useState<string | null>(null)
+  const [tutorFirstName, setTutorFirstName] = useState('')
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const { items, isStreaming, send, stop, confirmProposal, dismissProposal } = useChat(selectedUid)
+
+  const selectedStudent = students?.find((s) => s.uid === selectedUid) ?? null
+  const firstName = selectedStudent?.name.split(' ')[0] ?? 'your student'
+
+  useEffect(() => {
+    fetchRoster().then((roster) => {
+      setStudents(roster)
+      setSelectedUid((current) => {
+        if (current) return current
+        // Only honour ?student if it is actually on this tutor's roster.
+        const requested = roster.find((s) => s.uid === requestedUid)
+        return requested?.uid ?? roster[0]?.uid ?? null
+      })
+    })
+  }, [requestedUid])
+
+  // Fire the incoming question once, after the right student is selected —
+  // useChat clears the thread whenever selectedUid changes.
+  useEffect(() => {
+    if (!requestedPrompt || autoSentRef.current || !selectedUid) return
+    if (requestedUid && selectedUid !== requestedUid) return
+    autoSentRef.current = true
+    void send(requestedPrompt)
+    // Drop the params so a refresh doesn't ask the same thing all over again.
+    router.replace('/chat')
+  }, [requestedPrompt, requestedUid, selectedUid, send, router])
+
+  // currentUser is still null on the first client render while Firebase restores
+  // the session, so the greeting has to wait for the auth callback.
+  useEffect(() => {
+    return onAuthStateChanged(clientAuth, (user) => {
+      const name = user?.displayName ?? ''
+      setTutorFirstName(name.trim().split(/\s+/)[0] ?? '')
+    })
+  }, [])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [items])
 
-  function send() {
+  function submit() {
     const text = input.trim()
-    if (!text) return
-    setMessages(prev => [...prev, { id: Date.now(), type: 'user', content: text }])
+    if (!text || isStreaming || !selectedUid) return
     setInput('')
+    void send(text)
     inputRef.current?.focus()
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      send()
+      submit()
     }
+  }
+
+  function renderItem(item: ChatItem) {
+    switch (item.kind) {
+      case 'user':
+        return (
+          <div key={item.id} className="flex justify-end">
+            <div className="max-w-sm rounded-2xl rounded-tr-sm bg-[#1A7AB5] px-4 py-3">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-white">{item.text}</p>
+            </div>
+          </div>
+        )
+      case 'assistant':
+        return (
+          <div key={item.id} className="rounded-2xl border border-white/[0.06] bg-[#161616] p-5">
+            <Markdown text={item.text} />
+          </div>
+        )
+      case 'activity':
+        return (
+          <p key={item.id} className="flex items-center gap-2 px-1 text-xs text-[#6b6b6b]">
+            <Sparkles className="h-3 w-3" />
+            {item.label}
+          </p>
+        )
+      case 'proposal':
+        return (
+          <VocabProposalCard
+            key={item.id}
+            proposal={item.proposal}
+            status={item.status}
+            summary={item.summary}
+            studentFirstName={firstName}
+            onConfirm={(edited) => confirmProposal(item.id, edited)}
+            onDismiss={() => dismissProposal(item.id)}
+          />
+        )
+      case 'lesson-plan':
+        return <LessonPlanCard key={item.id} plan={item.plan} />
+    }
+  }
+
+  const lastItem = items[items.length - 1]
+  const showThinking = isStreaming && (!lastItem || lastItem.kind !== 'assistant')
+
+  // The roster is null until it loads, which is the only time we show a spinner
+  // in place of the picker.
+  let studentSelector = (
+    <StudentPicker
+      students={students ?? []}
+      selectedUid={selectedUid}
+      onSelect={setSelectedUid}
+      disabled={isStreaming}
+    />
+  )
+  if (students === null) {
+    studentSelector = <Loader2 className="h-4 w-4 animate-spin text-[#6b6b6b]" />
+  }
+
+  let emptyStateText = 'Ready to dive in?'
+  if (tutorFirstName) {
+    emptyStateText = `Hi ${tutorFirstName}, ready to dive in?`
+  }
+  if (students !== null && students.length === 0) {
+    emptyStateText = 'Add a student to your roster to start chatting about their learning.'
+  }
+
+  let inputPlaceholder = 'Select a student to start chatting'
+  if (selectedUid) {
+    inputPlaceholder = `How can I help you with ${firstName}'s learning today?`
+  }
+
+  // While an answer is streaming the send button becomes a stop button, so the
+  // one control is always the useful one.
+  let composerAction = (
+    <button
+      type="button"
+      onClick={submit}
+      disabled={!input.trim() || !selectedUid}
+      aria-label="Send message"
+      className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[#8DCEF9] text-[#0a1a2a] transition-colors hover:bg-[#A8DAFC] disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      <ArrowUp className="h-4 w-4" />
+    </button>
+  )
+  if (isStreaming) {
+    composerAction = (
+      <button
+        type="button"
+        onClick={stop}
+        aria-label="Stop generating"
+        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[#f0f0f0] text-[#0a0a0a] transition-colors hover:bg-white"
+      >
+        <Square className="h-3 w-3 fill-current" />
+      </button>
+    )
   }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#0a0a0a]">
 
-      {/* ── Header (matches the site-wide Navbar) ── */}
-      <header className="relative flex h-14 w-full shrink-0 items-center border-b border-border bg-card px-6">
-        <Link href="/" className="mr-8 shrink-0 transition-opacity hover:opacity-80">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Verbly" className="h-[22px] w-auto" />
-        </Link>
-
-        <nav className="flex items-center gap-1">
-          {NAV_TABS.map((tab) => (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={[
-                "relative px-3 py-1.5 text-sm font-medium transition-colors",
-                tab.active ? "text-[#8DCEF9]" : "text-muted-foreground hover:text-foreground",
-              ].join(" ")}
-            >
-              {tab.label}
-              {tab.active && (
-                <span className="absolute inset-x-3 bottom-0 h-px rounded-full bg-[#8DCEF9]" />
-              )}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-xs font-semibold text-white">
-          TA
-        </div>
-      </header>
+      <Navbar />
 
       {/* ── Body (sidebar + main) ── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -212,23 +215,9 @@ export function ChatView() {
             <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b6b6b]">
               History
             </p>
-            <div className="flex flex-col gap-0.5">
-              {HISTORY.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                    item.active
-                      ? 'bg-white/[0.06] text-[#f0f0f0]'
-                      : 'text-[#6b6b6b] hover:bg-white/[0.04] hover:text-[#f0f0f0]'
-                  }`}
-                >
-                  {item.icon === 'clock'
-                    ? <Clock className="h-3.5 w-3.5 shrink-0" />
-                    : <MessageSquare className="h-3.5 w-3.5 shrink-0" />}
-                  <span className="truncate">{item.label}</span>
-                </button>
-              ))}
+            <div className="flex items-start gap-2.5 px-3 py-2.5 text-sm text-[#6b6b6b]">
+              <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Saved chats are coming soon.</span>
             </div>
           </div>
         </aside>
@@ -238,20 +227,24 @@ export function ChatView() {
 
           {/* Student selector */}
           <div className="flex h-12 shrink-0 items-center justify-center">
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-[#161616] px-3.5 py-1.5 text-sm transition-colors hover:bg-[#1e1e1e]"
-            >
-              <span className="h-2 w-2 rounded-full bg-[#61C796]" />
-              <span className="font-medium text-[#f0f0f0]">Maria Lopez</span>
-              <ChevronDown className="h-3.5 w-3.5 text-[#6b6b6b]" />
-            </button>
+            {studentSelector}
           </div>
 
           {/* Messages */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-6">
-              {messages.map(renderMessage)}
+              {items.length === 0 && !isStreaming && (
+                <p className="text-balance py-16 text-center text-3xl font-medium tracking-tight text-[#f0f0f0]">
+                  {emptyStateText}
+                </p>
+              )}
+              {items.map(renderItem)}
+              {showThinking && (
+                <p className="flex items-center gap-2 px-1 text-xs text-[#6b6b6b]">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Thinking…
+                </p>
+              )}
               <div ref={bottomRef} />
             </div>
           </div>
@@ -260,11 +253,11 @@ export function ChatView() {
           <div className="shrink-0 pb-4">
             <div className="mx-auto w-full max-w-2xl px-6">
               <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-                {ACTION_CHIPS.map(({ icon: Icon, label }) => (
+                {ACTION_CHIPS.map(({ icon: Icon, label, prompt }) => (
                   <button
                     key={label}
                     type="button"
-                    onClick={() => setInput(label)}
+                    onClick={() => setInput(prompt)}
                     className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-[#161616] px-3 py-1.5 text-xs font-medium text-[#6b6b6b] transition-colors hover:border-white/[0.15] hover:text-[#f0f0f0]"
                   >
                     <Icon className="h-3 w-3 shrink-0" />
@@ -278,23 +271,17 @@ export function ChatView() {
                   ref={inputRef}
                   type="text"
                   value={input}
-                  onChange={e => setInput(e.target.value)}
+                  onChange={(e) => setInput(e.target.value)}
                   onKeyDown={onKeyDown}
-                  placeholder="How can I help you with Maria's learning today?"
-                  className="flex-1 bg-transparent text-sm text-[#f0f0f0] outline-none placeholder:text-[#444]"
+                  disabled={!selectedUid}
+                  placeholder={inputPlaceholder}
+                  className="flex-1 bg-transparent text-sm text-[#f0f0f0] outline-none placeholder:text-[#444] disabled:cursor-not-allowed"
                 />
-                <button
-                  type="button"
-                  onClick={send}
-                  disabled={!input.trim()}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#8DCEF9] text-[#0a1a2a] transition-colors hover:bg-[#A8DAFC] disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </button>
+                {composerAction}
               </div>
 
               <p className="mt-3 text-center text-xs text-[#444]">
-                AskVerbly can make mistakes. Check important info.
+                Verbly can make mistakes. Check important info.
               </p>
             </div>
           </div>

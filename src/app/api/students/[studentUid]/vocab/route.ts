@@ -1,9 +1,11 @@
 import type { Timestamp } from 'firebase-admin/firestore'
 
 import { getAdminFirestore } from '@/lib/firebase/admin'
+import { assertTutorOwnsStudent } from '@/lib/server/assertTutorOwnsStudent'
 import { verifyAuth } from '@/lib/server/verifyAuth'
 import type { VocabStatusFilter, VocabStudent } from '@/types/student-vocab'
 import { fetchVocabCards } from './fetchVocabCards'
+import { addVocabCards, MAX_MUTATION_WORDS, removeVocabCards, type WordPair } from './mutateVocabCards'
 
 const VALID_STATUSES = new Set<string>(['all', 'new', 'learning', 'review', 'relearning', 'due_soon'])
 
@@ -56,4 +58,64 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   }
 
   return Response.json({ ...result, student })
+}
+
+function parseWordPairs(value: unknown): WordPair[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_MUTATION_WORDS) return null
+  const pairs: WordPair[] = []
+  for (const item of value) {
+    const { spanish, english } = (item ?? {}) as Record<string, unknown>
+    if (typeof spanish !== 'string' || typeof english !== 'string') return null
+    if (!spanish.trim() || !english.trim()) return null
+    pairs.push({ spanish, english })
+  }
+  return pairs
+}
+
+/** POST /api/students/[studentUid]/vocab — add new cards. Body: { words: [{ spanish, english }] } */
+export async function POST(request: Request, context: RouteContext): Promise<Response> {
+  const auth = await verifyAuth(request)
+  if (!auth.ok) return auth.response
+
+  const { studentUid } = await context.params
+  const denied = await assertTutorOwnsStudent(auth.tutorUid, studentUid)
+  if (denied) return denied
+
+  const body = await request.json().catch(() => null)
+  const words = parseWordPairs((body as { words?: unknown } | null)?.words)
+  if (!words) {
+    return Response.json(
+      { error: `words must be 1-${MAX_MUTATION_WORDS} pairs of non-empty { spanish, english } strings` },
+      { status: 400 },
+    )
+  }
+
+  const result = await addVocabCards(studentUid, words)
+  return Response.json(result)
+}
+
+/** DELETE /api/students/[studentUid]/vocab — remove cards. Body: { cardIds: string[] } */
+export async function DELETE(request: Request, context: RouteContext): Promise<Response> {
+  const auth = await verifyAuth(request)
+  if (!auth.ok) return auth.response
+
+  const { studentUid } = await context.params
+  const denied = await assertTutorOwnsStudent(auth.tutorUid, studentUid)
+  if (denied) return denied
+
+  const body = await request.json().catch(() => null)
+  const cardIds = (body as { cardIds?: unknown } | null)?.cardIds
+  let validIds: string[] = []
+  if (Array.isArray(cardIds) && cardIds.length > 0 && cardIds.length <= MAX_MUTATION_WORDS) {
+    validIds = cardIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+  }
+  if (validIds.length === 0) {
+    return Response.json(
+      { error: `cardIds must be 1-${MAX_MUTATION_WORDS} non-empty strings` },
+      { status: 400 },
+    )
+  }
+
+  const result = await removeVocabCards(studentUid, validIds)
+  return Response.json(result)
 }
