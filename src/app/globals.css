@@ -124,4 +124,9 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-inter), sans-serif;
   }
+  /* Tailwind v4 preflight resets buttons to cursor: default; restore the pointer. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }

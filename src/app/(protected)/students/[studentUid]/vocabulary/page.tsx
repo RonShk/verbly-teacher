@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft,
   ChevronLeft,
@@ -10,9 +10,9 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
+  Loader2,
   Search,
   Sparkles,
-  Download,
   Plus,
   MoreHorizontal,
 } from 'lucide-react'
@@ -26,6 +26,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type { VocabCardItem, VocabListResponse, VocabStatusFilter } from '@/types/student-vocab'
 
 const VOCAB_STATUS_STYLES: Record<VocabCardItem['status'], { bg: string; text: string; label: string }> = {
@@ -95,6 +103,7 @@ function formatDueDate(iso: string | null): string {
 
 export default function VocabularyPage() {
   const { studentUid } = useParams<{ studentUid: string }>()
+  const router = useRouter()
   const [filter, setFilter] = useState<VocabStatusFilter>('all')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -104,6 +113,16 @@ export default function VocabularyPage() {
 
   const [data, setData] = useState<VocabListResponse | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const [addOpen, setAddOpen] = useState(false)
+  const [newSpanish, setNewSpanish] = useState('')
+  const [newEnglish, setNewEnglish] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [addError, setAddError] = useState('')
+
+  const [deleteTarget, setDeleteTarget] = useState<VocabCardItem | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300)
@@ -156,6 +175,80 @@ export default function VocabularyPage() {
   const totalQueryMatchCount = data?.totalQueryMatchCount ?? 0
   const totalPages = Math.max(1, data?.totalPages ?? 1)
   const pageStart = (page - 1) * PAGE_SIZE
+
+  async function addWord() {
+    const spanish = newSpanish.trim()
+    const english = newEnglish.trim()
+    if (!spanish || !english || saving) return
+
+    const user = clientAuth.currentUser
+    if (!user) return
+
+    setSaving(true)
+    setAddError('')
+    try {
+      const token = await user.getIdToken()
+      const res = await fetch(`/api/students/${studentUid}/vocab`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ words: [{ spanish, english }] }),
+      })
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+
+      const result = (await res.json()) as { added: number; skippedDuplicates: string[] }
+      if (result.added === 0) {
+        setAddError(`"${spanish}" is already in the deck.`)
+        return
+      }
+
+      setNewSpanish('')
+      setNewEnglish('')
+      setAddOpen(false)
+      await fetchData()
+    } catch {
+      setAddError('Could not add the word — please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteCard() {
+    if (!deleteTarget || deleting) return
+
+    const user = clientAuth.currentUser
+    if (!user) return
+
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      const token = await user.getIdToken()
+      const res = await fetch(`/api/students/${studentUid}/vocab`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ cardIds: [deleteTarget.id] }),
+      })
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+
+      setDeleteTarget(null)
+      // Removing the only row on a later page would strand us on an empty one;
+      // stepping back a page refetches through the page effect.
+      if (words.length === 1 && page > 1) {
+        setPage((p) => p - 1)
+      } else {
+        await fetchData()
+      }
+    } catch {
+      setDeleteError('Could not delete the card — please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  function askVerbly() {
+    const name = student?.name ?? 'this student'
+    const prompt = `Suggest new vocabulary words to add to ${name}'s deck, based on their recent performance and what is already in it.`
+    router.push(`/chat?student=${encodeURIComponent(studentUid)}&prompt=${encodeURIComponent(prompt)}`)
+  }
 
   function handleSort(key: VocabSortKey) {
     if (sortKey === key) {
@@ -222,15 +315,17 @@ export default function VocabularyPage() {
           {loading && !data ? '—' : `${totalWords} words`}
         </span>
         <div className="flex items-center gap-2">
-          <Button className="border border-[rgba(141,206,249,0.3)] bg-transparent font-medium text-[#C8E8FC] hover:border-[rgba(141,206,249,0.5)] hover:bg-[rgba(141,206,249,0.05)]">
+          <Button
+            onClick={askVerbly}
+            className="border border-[rgba(141,206,249,0.3)] bg-transparent font-medium text-[#C8E8FC] hover:border-[rgba(141,206,249,0.5)] hover:bg-[rgba(141,206,249,0.05)]"
+          >
             <Sparkles className="h-3.5 w-3.5" />
             Ask Verbly for suggestions
           </Button>
-          <Button className="border border-[rgba(255,255,255,0.08)] bg-[#1e1e1e] font-medium text-[#999] hover:bg-[#252525] hover:text-foreground">
-            <Download className="h-3.5 w-3.5" />
-            Import
-          </Button>
-          <Button className="bg-[#8DCEF9] font-medium text-[#0a1a2a] hover:bg-[#A8DAFC]">
+          <Button
+            onClick={() => { setAddError(''); setAddOpen(true) }}
+            className="bg-[#8DCEF9] font-medium text-[#0a1a2a] hover:bg-[#A8DAFC]"
+          >
             <Plus className="h-3.5 w-3.5" />
             Add word
           </Button>
@@ -348,7 +443,10 @@ export default function VocabularyPage() {
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="min-w-40">
-                        <DropdownMenuItem variant="destructive">
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={() => { setDeleteError(''); setDeleteTarget(word) }}
+                        >
                           Delete card
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -403,6 +501,100 @@ export default function VocabularyPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add word</DialogTitle>
+            <DialogDescription>
+              The card starts as new and enters {student?.name.split(' ')[0] ?? 'the student'}&apos;s review
+              schedule right away.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="new-spanish" className="text-sm font-medium text-foreground">Spanish</label>
+              <Input
+                id="new-spanish"
+                autoFocus
+                value={newSpanish}
+                onChange={(e) => setNewSpanish(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void addWord() }}
+                placeholder="la biblioteca"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="new-english" className="text-sm font-medium text-foreground">English</label>
+              <Input
+                id="new-english"
+                value={newEnglish}
+                onChange={(e) => setNewEnglish(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void addWord() }}
+                placeholder="the library"
+              />
+            </div>
+            {addError && <p className="text-sm text-[#e07a6a]">{addError}</p>}
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => setAddOpen(false)}
+              className="border border-border bg-transparent font-medium text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={addWord}
+              disabled={!newSpanish.trim() || !newEnglish.trim() || saving}
+              className="bg-[#8DCEF9] font-medium text-[#0a1a2a] hover:bg-[#A8DAFC]"
+            >
+              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Add word
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete card</DialogTitle>
+            <DialogDescription>
+              {deleteTarget && (
+                <>
+                  <span className="text-foreground">{deleteTarget.spanishWord}</span> —{' '}
+                  {deleteTarget.englishWord} will be removed from the deck, along with its review
+                  history. This cannot be undone.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteError && <p className="text-sm text-[#e07a6a]">{deleteError}</p>}
+
+          <DialogFooter>
+            <Button
+              onClick={() => setDeleteTarget(null)}
+              className="border border-border bg-transparent font-medium text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={deleteCard}
+              disabled={deleting}
+              className="font-medium"
+            >
+              {deleting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Delete card
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
