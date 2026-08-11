@@ -98,6 +98,12 @@ export function ChatView() {
     inputRef.current?.focus()
   }
 
+  /** Action chips fire their prompt straight away, without touching the input. */
+  function sendChipPrompt(prompt: string) {
+    if (isStreaming || !selectedUid) return
+    void send(prompt)
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -257,8 +263,9 @@ export function ChatView() {
                   <button
                     key={label}
                     type="button"
-                    onClick={() => setInput(prompt)}
-                    className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-[#161616] px-3 py-1.5 text-xs font-medium text-[#6b6b6b] transition-colors hover:border-white/[0.15] hover:text-[#f0f0f0]"
+                    onClick={() => sendChipPrompt(prompt)}
+                    disabled={isStreaming || !selectedUid}
+                    className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-[#161616] px-3 py-1.5 text-xs font-medium text-[#6b6b6b] transition-colors hover:border-white/[0.15] hover:text-[#f0f0f0] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-white/[0.08] disabled:hover:text-[#6b6b6b]"
                   >
                     <Icon className="h-3 w-3 shrink-0" />
                     {label}
