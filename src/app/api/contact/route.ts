@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { CONTACT_IP_LIMIT, enforceIpRateLimit } from '@/lib/server/rateLimit'
 
 interface ContactBody {
   firstName: string
@@ -21,6 +22,11 @@ function validate(body: Partial<ContactBody>): string | null {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+  const contactLimited = await enforceIpRateLimit(request, CONTACT_IP_LIMIT, 'contact submissions')
+  if (contactLimited) return contactLimited
+
   let body: Partial<ContactBody>
   try {
     body = await request.json()

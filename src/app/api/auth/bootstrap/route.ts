@@ -1,11 +1,15 @@
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
 import { FieldValue } from 'firebase-admin/firestore'
+import { enforceIpRateLimit } from '@/lib/server/rateLimit'
 
 interface BootstrapBody {
   idToken: string
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   let body: BootstrapBody
   try {
     body = await request.json()

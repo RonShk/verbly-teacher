@@ -1,5 +1,5 @@
 import { GEMINI_MODEL, getGemini } from '@/lib/gemini/client'
-import { checkRateLimit, tooManyRequests } from '@/lib/server/rateLimit'
+import { checkRateLimit, enforceIpRateLimit, tooManyRequests } from '@/lib/server/rateLimit'
 import { verifyAuth } from '@/lib/server/verifyAuth'
 
 import { CHAT_TITLE_LIMIT } from '../lib/rateLimits'
@@ -20,6 +20,9 @@ punctuation, no explanation.`
  * saved under the tutor's raw message by the time this returns.
  */
 export async function POST(request: Request): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 

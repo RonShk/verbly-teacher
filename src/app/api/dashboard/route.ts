@@ -1,5 +1,6 @@
 import { parseTimezoneOffsetMinutes } from '@/lib/server/dayBounds'
 import { verifyAuth } from '@/lib/server/verifyAuth'
+import { enforceIpRateLimit } from '@/lib/server/rateLimit'
 import type { DashboardResponse, StudentDashboard } from '@/types/dashboard'
 
 import { timed } from './lib/_timing'
@@ -19,6 +20,9 @@ import { buildTrends } from './lib/trends'
  * With `?student=<uid>`: returns just that student's dashboard (switcher).
  */
 export async function GET(request: Request): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const requestStart = performance.now()
   const auth = await timed('verifyAuth', verifyAuth(request))
   if (!auth.ok) return auth.response

@@ -3,6 +3,7 @@ import type { Timestamp } from 'firebase-admin/firestore'
 import { getAdminFirestore } from '@/lib/firebase/admin'
 import { assertTutorOwnsStudent } from '@/lib/server/assertTutorOwnsStudent'
 import { verifyAuth } from '@/lib/server/verifyAuth'
+import { enforceIpRateLimit } from '@/lib/server/rateLimit'
 import type { VocabStatusFilter, VocabStudent } from '@/types/student-vocab'
 import { fetchVocabCards } from './fetchVocabCards'
 import { addVocabCards, MAX_MUTATION_WORDS, removeVocabCards, type WordPair } from './mutateVocabCards'
@@ -30,6 +31,9 @@ async function fetchRosterStudent(tutorUid: string, studentUid: string): Promise
 }
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 
@@ -74,6 +78,9 @@ function parseWordPairs(value: unknown): WordPair[] | null {
 
 /** POST /api/students/[studentUid]/vocab — add new cards. Body: { words: [{ spanish, english }] } */
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 
@@ -96,6 +103,9 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
 
 /** DELETE /api/students/[studentUid]/vocab — remove cards. Body: { cardIds: string[] } */
 export async function DELETE(request: Request, context: RouteContext): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 

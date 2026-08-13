@@ -1,5 +1,6 @@
 import { assertTutorOwnsStudent } from '@/lib/server/assertTutorOwnsStudent'
 import { verifyAuth } from '@/lib/server/verifyAuth'
+import { enforceIpRateLimit } from '@/lib/server/rateLimit'
 import type { ChatItem, SaveChatBody, SavedChat } from '@/types/chat'
 
 import { parseChatItems } from '../lib/parseChatItems'
@@ -20,6 +21,9 @@ function badChatId(chatId: string): boolean {
 
 /** GET /api/chat/history/[chatId] — one saved thread, ready to render. */
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 
@@ -50,6 +54,9 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
  * every completed turn rather than the stream persisting messages piecemeal.
  */
 export async function PUT(request: Request, context: RouteContext): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 
@@ -110,6 +117,9 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
  * lands while the first answer is still streaming.
  */
 export async function PATCH(request: Request, context: RouteContext): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 
@@ -141,6 +151,9 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
 
 /** DELETE /api/chat/history/[chatId] — drop a thread from the sidebar for good. */
 export async function DELETE(request: Request, context: RouteContext): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 

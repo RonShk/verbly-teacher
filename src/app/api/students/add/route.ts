@@ -1,11 +1,15 @@
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
 import { verifyAuth } from '@/lib/server/verifyAuth'
+import { enforceIpRateLimit } from '@/lib/server/rateLimit'
 
 interface AddStudentBody {
   studentEmail: string
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const ipLimited = await enforceIpRateLimit(request)
+  if (ipLimited) return ipLimited
+
   const auth = await verifyAuth(request)
   if (!auth.ok) return auth.response
 
