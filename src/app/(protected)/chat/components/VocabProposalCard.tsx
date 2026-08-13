@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { Check, CirclePlus, Loader2, Trash2, X } from 'lucide-react'
 
-import type { VocabProposal } from '@/types/chat'
-import type { ProposalStatus } from '../useChat'
+import type { ProposalStatus, VocabProposal } from '@/types/chat'
 
 /**
  * Confirmation card for AI-proposed vocabulary changes. The word list is

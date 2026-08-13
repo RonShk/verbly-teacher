@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import {
-  ArrowUp, BarChart2, ClipboardList, Lightbulb, Loader2, MessageSquare, Sparkles, Square,
+  ArrowUp, BarChart2, ClipboardList, Lightbulb, Loader2, Sparkles, Square,
 } from 'lucide-react'
 
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -10,11 +10,13 @@ import { onAuthStateChanged } from 'firebase/auth'
 
 import { clientAuth } from '@/lib/firebase/client'
 import { Navbar } from '@/components/Navbar'
+import type { ChatItem, ChatSummary } from '@/types/chat'
+import { ChatHistorySidebar } from './components/ChatHistorySidebar'
 import { LessonPlanCard } from './components/LessonPlanCard'
 import { StudentPicker, type RosterStudent } from './components/StudentPicker'
 import { VocabProposalCard } from './components/VocabProposalCard'
 import { Markdown } from './markdown'
-import { useChat, type ChatItem } from './useChat'
+import { useChat } from './useChat'
 
 const ACTION_CHIPS = [
   { icon: Sparkles, label: 'Suggest vocabulary', prompt: 'Suggest new vocabulary words to add based on recent performance.' },
@@ -49,10 +51,31 @@ export function ChatView() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { items, isStreaming, send, stop, confirmProposal, dismissProposal } = useChat(selectedUid)
-
   const selectedStudent = students?.find((s) => s.uid === selectedUid) ?? null
   const firstName = selectedStudent?.name.split(' ')[0] ?? 'your student'
+
+  const {
+    items, isStreaming, isLoadingChat, history, activeChatId,
+    send, stop, startNewChat, openChat, deleteChat, confirmProposal, dismissProposal,
+  } = useChat({ studentUid: selectedUid, studentName: selectedStudent?.name ?? '' })
+
+  /** Picking a different student starts a fresh thread — a chat belongs to one student. */
+  function selectStudent(uid: string) {
+    if (uid === selectedUid) return
+    setSelectedUid(uid)
+    startNewChat()
+  }
+
+  /** Reopening a saved chat also re-selects the student it was about. */
+  function selectChat(chat: ChatSummary) {
+    setSelectedUid(chat.studentUid)
+    void openChat(chat.id)
+  }
+
+  function newChat() {
+    startNewChat()
+    inputRef.current?.focus()
+  }
 
   useEffect(() => {
     fetchRoster().then((roster) => {
@@ -66,8 +89,8 @@ export function ChatView() {
     })
   }, [requestedUid])
 
-  // Fire the incoming question once, after the right student is selected —
-  // useChat clears the thread whenever selectedUid changes.
+  // Fire the incoming question once, after the right student is selected, so
+  // the new thread is saved against them.
   useEffect(() => {
     if (!requestedPrompt || autoSentRef.current || !selectedUid) return
     if (requestedUid && selectedUid !== requestedUid) return
@@ -160,7 +183,7 @@ export function ChatView() {
     <StudentPicker
       students={students ?? []}
       selectedUid={selectedUid}
-      onSelect={setSelectedUid}
+      onSelect={selectStudent}
       disabled={isStreaming}
     />
   )
@@ -174,6 +197,25 @@ export function ChatView() {
   }
   if (students !== null && students.length === 0) {
     emptyStateText = 'Add a student to your roster to start chatting about their learning.'
+  }
+
+  // The greeting only belongs on a genuinely empty thread — not while a saved
+  // one is being fetched, and not once an answer starts arriving.
+  let emptyState = null
+  if (items.length === 0 && !isStreaming && !isLoadingChat) {
+    emptyState = (
+      <p className="text-balance py-16 text-center text-3xl font-medium tracking-tight text-[#f0f0f0]">
+        {emptyStateText}
+      </p>
+    )
+  }
+  if (isLoadingChat) {
+    emptyState = (
+      <p className="flex items-center justify-center gap-2 py-16 text-sm text-[#6b6b6b]">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading conversation…
+      </p>
+    )
   }
 
   let inputPlaceholder = 'Select a student to start chatting'
@@ -215,18 +257,14 @@ export function ChatView() {
       {/* ── Body (sidebar + main) ── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
-        {/* ── Sidebar ── */}
-        <aside className="flex w-[240px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0a0a]">
-          <div className="flex-1 overflow-y-auto px-3 py-4">
-            <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b6b6b]">
-              History
-            </p>
-            <div className="flex items-start gap-2.5 px-3 py-2.5 text-sm text-[#6b6b6b]">
-              <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>Saved chats are coming soon.</span>
-            </div>
-          </div>
-        </aside>
+        <ChatHistorySidebar
+          history={history}
+          activeChatId={activeChatId}
+          disabled={isStreaming}
+          onNewChat={newChat}
+          onSelect={selectChat}
+          onDelete={deleteChat}
+        />
 
         {/* ── Main ── */}
         <div className="flex min-w-0 flex-1 flex-col">
@@ -239,11 +277,7 @@ export function ChatView() {
           {/* Messages */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-6">
-              {items.length === 0 && !isStreaming && (
-                <p className="text-balance py-16 text-center text-3xl font-medium tracking-tight text-[#f0f0f0]">
-                  {emptyStateText}
-                </p>
-              )}
+              {emptyState}
               {items.map(renderItem)}
               {showThinking && (
                 <p className="flex items-center gap-2 px-1 text-xs text-[#6b6b6b]">
