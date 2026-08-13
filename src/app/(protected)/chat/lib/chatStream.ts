@@ -11,6 +11,20 @@ export interface ChatTurnRequest {
 }
 
 /**
+ * The tutor has spent their allowance for the window. Distinct from a failure
+ * so the UI can explain the wait instead of saying something went wrong.
+ */
+export class RateLimitError extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterSeconds: number,
+  ) {
+    super(message)
+    this.name = 'RateLimitError'
+  }
+}
+
+/**
  * POSTs one tutor message and invokes `onEvent` for each SSE frame the route
  * streams back, resolving when the stream ends.
  *
@@ -34,6 +48,17 @@ export async function streamChatTurn(
     body: JSON.stringify(body),
     signal,
   })
+
+  if (res?.status === 429) {
+    const data = (await res.json().catch(() => null)) as {
+      error?: string
+      retryAfterSeconds?: number
+    } | null
+    throw new RateLimitError(
+      data?.error ?? 'You have sent too many messages. Please try again shortly.',
+      data?.retryAfterSeconds ?? 60,
+    )
+  }
   if (!res?.ok || !res.body) throw new Error(`Request failed: ${res?.status}`)
 
   await readEventStream(res.body, onEvent)
