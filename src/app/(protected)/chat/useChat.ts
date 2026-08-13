@@ -38,8 +38,10 @@ export function useChat({
     abortRef.current?.abort()
   }, [])
 
-  const { history, activeChatId, isLoadingChat, persist, startNewChat, openChat, deleteChat } =
-    useSavedChats({ studentUid, studentName, thread: handle, abort: stop })
+  const {
+    history, activeChatId, isLoadingChat,
+    persist, nameThread, startNewChat, openChat, renameChat, deleteChat,
+  } = useSavedChats({ studentUid, studentName, thread: handle, abort: stop })
 
   const send = useCallback(
     async (text: string, options?: { hidden?: boolean }) => {
@@ -52,6 +54,13 @@ export function useChat({
         if (options?.hidden) return started
         return appendItem(started, { id: makeId(), kind: 'user', text: message })
       })
+
+      // Save before the answer, not after: the row has to reach the sidebar
+      // straight away, and a reload mid-answer must not lose the thread.
+      if (!options?.hidden) {
+        void persist()
+        nameThread(message)
+      }
 
       const controller = new AbortController()
       abortRef.current = controller
@@ -77,7 +86,7 @@ export function useChat({
         void persist()
       }
     },
-    [studentUid, handle, persist],
+    [studentUid, handle, persist, nameThread],
   )
 
   /** Applies a (possibly edited) proposal through the vocab API, then tells the model. */
@@ -115,6 +124,7 @@ export function useChat({
     stop,
     startNewChat,
     openChat,
+    renameChat,
     deleteChat,
     confirmProposal,
     dismissProposal,

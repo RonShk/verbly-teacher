@@ -8,6 +8,7 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 
+import { authedFetch } from '@/lib/client/authedFetch'
 import { clientAuth } from '@/lib/firebase/client'
 import { Navbar } from '@/components/Navbar'
 import type { ChatItem, ChatSummary } from '@/types/chat'
@@ -26,11 +27,8 @@ const ACTION_CHIPS = [
 ]
 
 async function fetchRoster(): Promise<RosterStudent[]> {
-  const user = clientAuth.currentUser
-  if (!user) return []
-  const token = await user.getIdToken()
-  const res = await fetch('/api/students/list', { headers: { Authorization: `Bearer ${token}` } })
-  if (!res.ok) return []
+  const res = await authedFetch('/api/students/list')
+  if (!res?.ok) return []
   const data = (await res.json()) as { students: RosterStudent[] }
   return data.students
 }
@@ -56,7 +54,8 @@ export function ChatView() {
 
   const {
     items, isStreaming, isLoadingChat, history, activeChatId,
-    send, stop, startNewChat, openChat, deleteChat, confirmProposal, dismissProposal,
+    send, stop, startNewChat, openChat, renameChat, deleteChat,
+    confirmProposal, dismissProposal,
   } = useChat({ studentUid: selectedUid, studentName: selectedStudent?.name ?? '' })
 
   /** Picking a different student starts a fresh thread — a chat belongs to one student. */
@@ -263,6 +262,7 @@ export function ChatView() {
           disabled={isStreaming}
           onNewChat={newChat}
           onSelect={selectChat}
+          onRename={renameChat}
           onDelete={deleteChat}
         />
 

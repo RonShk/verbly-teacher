@@ -103,6 +103,42 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
   })
 }
 
+/**
+ * PATCH /api/chat/history/[chatId] — retitle a thread without rewriting it.
+ *
+ * Used both by the tutor's Rename action and by the auto-generated title that
+ * lands while the first answer is still streaming.
+ */
+export async function PATCH(request: Request, context: RouteContext): Promise<Response> {
+  const auth = await verifyAuth(request)
+  if (!auth.ok) return auth.response
+
+  const { chatId } = await context.params
+  if (badChatId(chatId)) {
+    return Response.json({ error: 'Invalid chat id' }, { status: 400 })
+  }
+
+  const body = (await request.json().catch(() => null)) as { title?: unknown } | null
+  let title = ''
+  if (typeof body?.title === 'string') {
+    title = body.title.trim().slice(0, MAX_TITLE_LENGTH)
+  }
+  if (!title) {
+    return Response.json({ error: 'title is required' }, { status: 400 })
+  }
+
+  const ref = chatsCollection(auth.tutorUid).doc(chatId)
+  const snap = await ref.get()
+  if (!snap.exists) {
+    return Response.json({ error: 'Chat not found' }, { status: 404 })
+  }
+
+  // updatedAt is left alone on purpose — renaming a thread should not reshuffle
+  // the sidebar under the tutor.
+  await ref.update({ title })
+  return Response.json({ title })
+}
+
 /** DELETE /api/chat/history/[chatId] — drop a thread from the sidebar for good. */
 export async function DELETE(request: Request, context: RouteContext): Promise<Response> {
   const auth = await verifyAuth(request)
