@@ -96,8 +96,8 @@ export function Navbar() {
           </DropdownMenuTrigger>
 
           <DropdownMenuContent align="end" className="min-w-40">
-            <DropdownMenuItem disabled className="cursor-not-allowed opacity-60">
-              Settings
+            <DropdownMenuItem asChild>
+              <Link href="/settings">Settings</Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
