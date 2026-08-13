@@ -1,7 +1,9 @@
 import { getAdminFirestore } from '@/lib/firebase/admin'
+import { checkRateLimit, tooManyRequests } from '@/lib/server/rateLimit'
 import { verifyAuth } from '@/lib/server/verifyAuth'
 import type { ChatRequestBody, ChatStreamEvent } from '@/types/chat'
 
+import { CHAT_TURN_LIMIT } from './lib/rateLimits'
 import { runChatTurn } from './lib/runChatTurn'
 
 const MAX_MESSAGE_LENGTH = 4000
@@ -40,6 +42,13 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (message.length > MAX_MESSAGE_LENGTH) {
     return Response.json({ error: 'Message is too long' }, { status: 400 })
+  }
+
+  // Metered before the roster read so a flood costs neither Firestore reads nor
+  // a Gemini turn. Well-formed requests are what count against the window.
+  const rate = await checkRateLimit(auth.tutorUid, CHAT_TURN_LIMIT)
+  if (!rate.allowed) {
+    return tooManyRequests(rate, 'chat messages')
   }
 
   // Roster read doubles as the ownership check and gives us the student's name.

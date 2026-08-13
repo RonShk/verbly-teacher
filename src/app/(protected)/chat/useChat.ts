@@ -6,7 +6,7 @@ import { clientAuth } from '@/lib/firebase/client'
 import type { VocabProposal } from '@/types/chat'
 
 import { applyVocabProposal } from './lib/applyVocabProposal'
-import { streamChatTurn } from './lib/chatStream'
+import { RateLimitError, streamChatTurn } from './lib/chatStream'
 import { applyStreamEvent, appendItem, makeId, patchItem } from './lib/thread'
 import { useSavedChats } from './useSavedChats'
 import { useThread } from './useThread'
@@ -31,6 +31,8 @@ export function useChat({
 }) {
   const { thread, handle } = useThread()
   const [isStreaming, setIsStreaming] = useState(false)
+  /** Shown above the composer when the tutor is out of allowance for the window. */
+  const [limitNotice, setLimitNotice] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   /** Cuts the current answer short; the partial reply is kept. */
@@ -49,6 +51,7 @@ export function useChat({
       if (!message || !studentUid || !clientAuth.currentUser) return
 
       setIsStreaming(true)
+      setLimitNotice(null)
       handle.apply((prev) => {
         const started = { ...prev, streamingItemId: null }
         if (options?.hidden) return started
@@ -71,10 +74,16 @@ export function useChat({
           controller.signal,
           (event) => handle.apply((prev) => applyStreamEvent(prev, event)),
         )
-      } catch {
+      } catch (err) {
         // Stopping aborts the fetch, which lands here — that is not an error,
         // and whatever streamed in before the stop stays on screen.
-        if (!controller.signal.aborted) {
+        if (controller.signal.aborted) {
+          // nothing to report
+        } else if (err instanceof RateLimitError) {
+          // Not a failure: the message was fine, the tutor is just out of
+          // allowance. It stays in the thread so they can see what went unsent.
+          setLimitNotice(err.message)
+        } else {
           handle.apply((prev) =>
             appendItem(prev, { id: makeId(), kind: 'assistant', text: STREAM_FAILED }),
           )
@@ -118,6 +127,8 @@ export function useChat({
     items: thread.items,
     isStreaming,
     isLoadingChat,
+    limitNotice,
+    dismissLimitNotice: () => setLimitNotice(null),
     history,
     activeChatId,
     send,

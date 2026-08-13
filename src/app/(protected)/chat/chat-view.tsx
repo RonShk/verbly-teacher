@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import {
-  ArrowUp, BarChart2, ClipboardList, Lightbulb, Loader2, Sparkles, Square,
+  ArrowUp, BarChart2, ClipboardList, Lightbulb, Loader2, Sparkles, Square, TriangleAlert, X,
 } from 'lucide-react'
 
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -54,6 +54,7 @@ export function ChatView() {
 
   const {
     items, isStreaming, isLoadingChat, history, activeChatId,
+    limitNotice, dismissLimitNotice,
     send, stop, startNewChat, openChat, renameChat, deleteChat,
     confirmProposal, dismissProposal,
   } = useChat({ studentUid: selectedUid, studentName: selectedStudent?.name ?? '' })
@@ -292,6 +293,24 @@ export function ChatView() {
           {/* Bottom */}
           <div className="shrink-0 pb-4">
             <div className="mx-auto w-full max-w-2xl px-6">
+              {limitNotice && (
+                <div
+                  role="status"
+                  className="mb-3 flex items-start gap-2.5 rounded-xl border border-[#e0a06a]/25 bg-[#e0a06a]/10 px-3.5 py-2.5"
+                >
+                  <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#e0a06a]" />
+                  <p className="flex-1 text-xs leading-relaxed text-[#e8c3a4]">{limitNotice}</p>
+                  <button
+                    type="button"
+                    onClick={dismissLimitNotice}
+                    aria-label="Dismiss"
+                    className="shrink-0 cursor-pointer rounded p-0.5 text-[#e0a06a] transition-colors hover:bg-white/[0.08]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
               <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
                 {ACTION_CHIPS.map(({ icon: Icon, label, prompt }) => (
                   <button

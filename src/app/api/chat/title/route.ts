@@ -1,5 +1,8 @@
 import { GEMINI_MODEL, getGemini } from '@/lib/gemini/client'
+import { checkRateLimit, tooManyRequests } from '@/lib/server/rateLimit'
 import { verifyAuth } from '@/lib/server/verifyAuth'
+
+import { CHAT_TITLE_LIMIT } from '../lib/rateLimits'
 
 const MAX_MESSAGE_LENGTH = 4000
 const MAX_TITLE_LENGTH = 60
@@ -27,6 +30,13 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (!message) {
     return Response.json({ error: 'message is required' }, { status: 400 })
+  }
+
+  // Naming is best-effort — the caller falls back to the tutor's raw message,
+  // so a throttled title never blocks the conversation.
+  const rate = await checkRateLimit(auth.tutorUid, CHAT_TITLE_LIMIT)
+  if (!rate.allowed) {
+    return tooManyRequests(rate, 'chat name suggestions')
   }
 
   try {
