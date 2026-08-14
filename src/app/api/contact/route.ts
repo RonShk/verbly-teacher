@@ -44,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
   const resend = new Resend(process.env.RESEND_API_KEY)
 
   const { error } = await resend.emails.send({
-    from: 'Verbly Support Form <onboarding@resend.dev>',
+    from: process.env.RESEND_FROM_EMAIL || 'Verbly <invites@mail.verbly.study>',
     to: 'verblysupport@gmail.com',
     replyTo: `${firstName} ${lastName} <${email}>`,
     subject: `[Contact] ${subject}`,

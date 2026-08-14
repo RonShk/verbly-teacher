@@ -48,17 +48,25 @@ type Student = {
   uid: string
   name: string
   email: string
+  inviteStatus: "pending" | "sent" | "accepted" | "email_failed"
+  inviteId: string | null
   initials: string
   avatarColor: string
 }
 
-function toStudent(uid: string, name: string, email: string): Student {
-  return { uid, name, email, initials: deriveInitials(name), avatarColor: deriveColor(uid) }
+function toStudent(uid: string, name: string, email: string, inviteStatus: Student["inviteStatus"] = "accepted", inviteId: string | null = null): Student {
+  return {
+    uid,
+    name,
+    email,
+    inviteStatus,
+    inviteId,
+    initials: inviteStatus === "accepted" ? deriveInitials(name) : "✉",
+    avatarColor: deriveColor(email),
+  }
 }
 
 // ---------------------------------------------------------------------------
-
-const DELETE_DELAY = 3
 
 function RemoveStudentDialog({
   student,
@@ -71,22 +79,6 @@ function RemoveStudentDialog({
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
 }) {
-  const [countdown, setCountdown] = useState(DELETE_DELAY)
-
-  useEffect(() => {
-    if (!open) return
-    setCountdown(DELETE_DELAY)
-    const id = setInterval(() => {
-      setCountdown((n) => {
-        if (n <= 1) { clearInterval(id); return 0 }
-        return n - 1
-      })
-    }, 1000)
-    return () => clearInterval(id)
-  }, [open])
-
-  const canDelete = countdown === 0
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -124,11 +116,10 @@ function RemoveStudentDialog({
             Keep Student
           </Button>
           <Button
-            disabled={!canDelete}
             onClick={onConfirm}
-            className="flex-1 rounded-xl border border-[rgba(240,149,149,0.3)] bg-[#3d1414] text-[#f09595] hover:bg-[#4d1a1a] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl border border-[rgba(240,149,149,0.3)] bg-[#3d1414] text-[#f09595] hover:bg-[#4d1a1a]"
           >
-            {canDelete ? "Delete Student" : `Delete Student (${countdown})`}
+            Delete Student
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -146,6 +137,7 @@ export function StudentsTable() {
   const [removeTarget, setRemoveTarget] = useState<Student | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [removing, setRemoving] = useState(false)
 
   useEffect(() => {
     const unsubscribe = clientAuth.onAuthStateChanged(async (user) => {
@@ -157,8 +149,14 @@ export function StudentsTable() {
       if (!res.ok) { setLoadingStudents(false); return }
       const { students: rows } = await res.json()
       setStudents(
-        rows.map(({ uid, name, email }: { uid: string; name: string; email: string }) =>
-          toStudent(uid, name, email),
+        rows.map(({ uid, name, email, inviteStatus, inviteId }: {
+          uid: string
+          name: string
+          email: string
+          inviteStatus?: Student["inviteStatus"]
+          inviteId?: string | null
+        }) =>
+          toStudent(uid, name, email, inviteStatus, inviteId),
         ),
       )
       setLoadingStudents(false)
@@ -172,8 +170,9 @@ export function StudentsTable() {
   }
 
   async function handleRemoveConfirm() {
-    if (!removeTarget) return
+    if (!removeTarget || removing) return
     const target = removeTarget
+    setRemoving(true)
 
     // Optimistically remove from the list
     setStudents((prev) => prev.filter((s) => s.uid !== target.uid))
@@ -182,25 +181,30 @@ export function StudentsTable() {
 
     try {
       const currentUser = clientAuth.currentUser
-      if (!currentUser) return
+      if (!currentUser) throw new Error("You must be signed in to remove a student")
       const idToken = await currentUser.getIdToken()
 
-      await fetch("/api/students/remove", {
+      const response = await fetch("/api/students/remove", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ studentUid: target.uid }),
+        body: JSON.stringify(target.inviteStatus === "accepted"
+          ? { studentUid: target.uid }
+          : { inviteId: target.inviteId }),
       })
+      if (!response.ok) throw new Error("Student removal failed")
     } catch {
-      // Silently revert on failure
+      // Revert the optimistic update if the request failed.
       setStudents((prev) => [...prev, target])
+    } finally {
+      setRemoving(false)
     }
   }
 
   function handleStudentAdded(added: AddedStudent) {
-    setStudents((prev) => [...prev, toStudent(added.uid, added.name, added.email)])
+    setStudents((prev) => [...prev, toStudent(added.uid, added.name, added.email, added.inviteStatus ?? "sent", added.inviteId ?? null)])
   }
 
   const columns: ColumnDef<Student>[] = [
@@ -216,7 +220,15 @@ export function StudentsTable() {
             >
               {student.initials}
             </div>
-            <span className="font-medium text-foreground">{student.name}</span>
+            <div className="flex min-w-0 flex-col">
+              <span className="font-medium text-foreground">{student.name}</span>
+              <span className="text-xs text-muted-foreground">{student.email}</span>
+              {student.inviteStatus !== "accepted" && (
+                <span className="mt-0.5 text-xs text-[#8DCEF9]">
+                  {student.inviteStatus === "email_failed" ? "Invitation failed" : "Pending invite — awaiting sign-in"}
+                </span>
+              )}
+            </div>
           </div>
         )
       },
@@ -226,8 +238,22 @@ export function StudentsTable() {
       header: () => <span className="flex justify-end pr-1">Action</span>,
       cell: ({ row }) => {
         const student = row.original
+        if (student.inviteStatus !== "accepted") {
+          return (
+            <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => openRemoveDialog(student)}
+              >
+                Remove invite
+              </Button>
+            </div>
+          )
+        }
         return (
-          <div className="flex justify-end">
+          <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                 <Button
@@ -239,13 +265,25 @@ export function StudentsTable() {
                   <span className="sr-only">Open menu for {student.name}</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-44">
-                <DropdownMenuItem onSelect={() => router.push(`/students/${student.uid}/vocabulary`)}>
+              <DropdownMenuContent
+                align="end"
+                className="min-w-44"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.stopPropagation()
+                    router.push(`/students/${student.uid}/vocabulary`)
+                  }}
+                >
                   View Vocabulary
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   variant="destructive"
-                  onSelect={() => openRemoveDialog(student)}
+                  onSelect={(e) => {
+                    e.stopPropagation()
+                    openRemoveDialog(student)
+                  }}
                 >
                   Remove Student
                 </DropdownMenuItem>
@@ -333,8 +371,12 @@ export function StudentsTable() {
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
-                    className="cursor-pointer border-border last:border-0 hover:bg-white/3"
-                    onClick={() => router.push(`/students/${row.original.uid}/vocabulary`)}
+                    className={`${row.original.inviteStatus === "accepted" ? "cursor-pointer" : "cursor-default"} border-border last:border-0 hover:bg-white/3`}
+                    onClick={() => {
+                      if (row.original.inviteStatus === "accepted") {
+                        router.push(`/students/${row.original.uid}/vocabulary`)
+                      }
+                    }}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="px-4 py-3">
