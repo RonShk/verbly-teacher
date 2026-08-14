@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "repair:legacy-invites": "node --env-file=.env scripts/repair-legacy-student-invites.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.16.0",
