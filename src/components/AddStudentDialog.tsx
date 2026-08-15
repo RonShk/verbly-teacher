@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { CheckCircle2, UserPlus } from 'lucide-react'
 
 import { clientAuth } from '@/lib/firebase/client'
@@ -25,18 +25,15 @@ export type AddedStudent = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-type AddError = 'not_found' | 'already_added' | 'already_linked' | 'email_failed' | 'not_configured' | 'generic'
+type AddError = 'already_added' | 'already_linked' | 'email_failed' | 'not_configured' | 'generic'
 
 const ADD_ERROR_MESSAGES: Record<AddError, string> = {
-  not_found: 'No student account found for this email. Double-check the spelling.',
-  already_added: 'This student is already in your class.',
+  already_added: 'This student has already been added or invited.',
   already_linked: 'This student is already linked to another tutor.',
   email_failed: 'The student was added, but we could not send the invitation email. Please try again later.',
   not_configured: 'Invitations are not configured yet. Add the Resend API key first.',
   generic: 'Something went wrong. Please try again.',
 }
-
-type SearchResult = { uid: string; name: string; email: string; signUpDate: string | null }
 
 export function AddStudentDialog({
   open,
@@ -52,55 +49,9 @@ export function AddStudentDialog({
   const [loading, setLoading] = useState(false)
   const [apiError, setApiError] = useState<AddError | null>(null)
   const [sentEmail, setSentEmail] = useState<string | null>(null)
-  const [suggestions, setSuggestions] = useState<SearchResult[]>([])
-  const [showSuggestions, setShowSuggestions] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const noResultsPrefixRef = useRef<string | null>(null)
 
   const isValid = EMAIL_RE.test(email)
   const showValidationError = touched && email.length > 0 && !isValid
-
-  async function fetchSuggestions(query: string) {
-    if (query.length < 4) {
-      setSuggestions([])
-      setShowSuggestions(false)
-      noResultsPrefixRef.current = null
-      return
-    }
-    if (noResultsPrefixRef.current && query.startsWith(noResultsPrefixRef.current)) return
-    const currentUser = clientAuth.currentUser
-    if (!currentUser) return
-    const idToken = await currentUser.getIdToken()
-    const res = await fetch(`/api/students/search?q=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `Bearer ${idToken}` },
-    })
-    if (!res.ok) return
-    const { students } = await res.json()
-    if (students.length === 0) {
-      noResultsPrefixRef.current = query
-    } else {
-      noResultsPrefixRef.current = null
-    }
-    setSuggestions(students)
-    setShowSuggestions(students.length > 0)
-  }
-
-  function handleEmailChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const val = e.target.value
-    setEmail(val)
-    if (apiError) setApiError(null)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => fetchSuggestions(val), 220)
-  }
-
-  function handleSelect(result: SearchResult) {
-    setEmail(result.email)
-    setSuggestions([])
-    setShowSuggestions(false)
-    setTouched(true)
-    if (apiError) setApiError(null)
-    noResultsPrefixRef.current = null
-  }
 
   function handleClose() {
     setEmail('')
@@ -108,16 +59,11 @@ export function AddStudentDialog({
     setLoading(false)
     setApiError(null)
     setSentEmail(null)
-    setSuggestions([])
-    setShowSuggestions(false)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    noResultsPrefixRef.current = null
     onOpenChange(false)
   }
 
   async function handleAdd() {
     if (!isValid || loading) return
-    setShowSuggestions(false)
     setLoading(true)
     setApiError(null)
     try {
@@ -127,7 +73,7 @@ export function AddStudentDialog({
       const res = await fetch('/api/students/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ studentEmail: email }),
+        body: JSON.stringify({ studentEmail: email.trim() }),
       })
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
@@ -143,8 +89,7 @@ export function AddStudentDialog({
         })
         return
       }
-      if (res.status === 404) setApiError('not_found')
-      else if (res.status === 409) setApiError(data.error === 'already_linked' ? 'already_linked' : 'already_added')
+      if (res.status === 409) setApiError(data.error === 'already_linked' ? 'already_linked' : 'already_added')
       else if (res.status === 502) setApiError('email_failed')
       else if (res.status === 503) setApiError('not_configured')
       else setApiError('generic')
@@ -156,11 +101,11 @@ export function AddStudentDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
-      <DialogContent showCloseButton={false} className="gap-0 rounded-2xl p-0 sm:max-w-sm">
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) handleClose() }}>
+      <DialogContent showCloseButton={false} className="gap-0 rounded-2xl p-0">
         <DialogHeader className="items-center px-6 pb-5 pt-8 text-center">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[rgba(141,206,249,0.1)]">
-            <UserPlus className="h-5 w-5 text-[#8DCEF9]" />
+            {sentEmail ? <CheckCircle2 className="h-6 w-6 text-[#8DCEF9]" /> : <UserPlus className="h-5 w-5 text-[#8DCEF9]" />}
           </div>
           <DialogTitle className="text-base font-semibold text-foreground">
             {sentEmail ? 'Invitation sent' : 'Invite a Student'}
@@ -172,57 +117,27 @@ export function AddStudentDialog({
 
         {sentEmail ? (
           <div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
-            <CheckCircle2 className="h-10 w-10 text-[#8DCEF9]" />
             <p className="text-sm text-muted-foreground">They can sign in to Verbly with that email to join your class.</p>
           </div>
-        ) : <div className="flex flex-col gap-1.5 px-6 py-5">
-          <label className="text-sm font-medium text-foreground">Student Email</label>
-          <div className="relative">
+        ) : (
+          <div className="flex flex-col gap-1.5 px-6 py-5">
+            <label className="text-sm font-medium text-foreground">Student Email</label>
             <Input
               type="email"
               placeholder="student@email.com"
               value={email}
-              onChange={handleEmailChange}
-              onBlur={() => {
-                setTouched(true)
-                // slight delay so a click on a suggestion registers first
-                setTimeout(() => setShowSuggestions(false), 150)
+              onChange={(event) => {
+                setEmail(event.target.value)
+                if (apiError) setApiError(null)
               }}
-              onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
-              aria-invalid={showValidationError || apiError === 'not_found'}
+              onBlur={() => setTouched(true)}
+              aria-invalid={showValidationError}
               disabled={loading}
             />
-            {showSuggestions && (
-              <ul className="absolute top-full z-50 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
-                {suggestions.map((s) => (
-                  <li key={s.uid}>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleSelect(s)}
-                      className="flex w-full flex-col px-3 py-2.5 text-left hover:bg-white/5"
-                    >
-                      <span className="text-sm font-medium text-foreground">{s.name}</span>
-                      <span className="text-xs text-muted-foreground">{s.email}</span>
-                      {s.signUpDate && (
-                        <span className="mt-0.5 text-xs italic text-muted-foreground/60">
-                          Joined Verbly on{' '}
-                          {new Date(s.signUpDate).toLocaleDateString('en-US', {
-                            month: 'long',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {showValidationError && <p className="text-xs text-[#f09595]">Please enter a valid email address.</p>}
+            {apiError && <p className="text-xs text-[#f09595]">{ADD_ERROR_MESSAGES[apiError]}</p>}
           </div>
-          {showValidationError && <p className="text-xs text-[#f09595]">Please enter a valid email address.</p>}
-          {apiError && <p className="text-xs text-[#f09595]">{ADD_ERROR_MESSAGES[apiError]}</p>}
-        </div>}
+        )}
 
         <DialogFooter className="flex-row gap-3 border-t border-border px-6 py-4 sm:flex-row sm:justify-stretch">
           <Button
