@@ -31,11 +31,24 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'studentEmail is required' }, { status: 400 })
   }
 
+  const teacherUid = auth.tutorUid
+  const db = getAdminFirestore()
+  const existingInvites = await db.collection('studentInvites')
+    .where('teacherUid', '==', teacherUid)
+    .get()
+  const alreadyInvited = existingInvites.docs.some((doc) => {
+    const invite = doc.data()
+    return typeof invite.email === 'string' &&
+      invite.email.trim().toLowerCase() === normalizedEmail &&
+      ['pending', 'sent'].includes(String(invite.status))
+  })
+  if (alreadyInvited) {
+    return Response.json({ error: 'already_added' }, { status: 409 })
+  }
+
   if (!process.env.RESEND_API_KEY?.trim() || !process.env.RESEND_FROM_EMAIL?.trim()) {
     return Response.json({ error: 'Invitations are not configured yet' }, { status: 503 })
   }
-
-  const teacherUid = auth.tutorUid
 
   let studentUid: string | null = null
   let studentName: string
@@ -58,7 +71,6 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  const db = getAdminFirestore()
   const studentDocRef = studentUid ? db.collection('students').doc(studentUid) : null
   const rosterRef = studentUid
     ? db.collection('teachers').doc(teacherUid).collection('students').doc(studentUid)
