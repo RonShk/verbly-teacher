@@ -33,7 +33,7 @@ export function Navbar() {
 
   async function handleSignOut() {
     await signOut(clientAuth)
-    router.replace("/login")
+    router.replace("/private-beta")
   }
 
   return (

@@ -172,7 +172,7 @@ export function SettingsView() {
         await deleteUser(authenticatedUser)
       }
       await signOut(clientAuth)
-      router.replace('/login')
+      router.replace('/private-beta')
     } catch (error) {
       setDeleteError(firebaseErrorMessage(error, 'Could not delete your account.'))
       setDeleting(false)
