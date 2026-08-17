@@ -43,6 +43,13 @@ export const CONTACT_IP_LIMIT: RateLimitRule = {
   windowSeconds: 15 * 60,
 }
 
+/** Prevents bots from filling the launch audience with repeated submissions. */
+export const WAITLIST_IP_LIMIT: RateLimitRule = {
+  name: 'waitlistSubmissions',
+  limit: 10,
+  windowSeconds: 60 * 60,
+}
+
 /** Counts one request against the rule and reports whether it may proceed. */
 export async function checkRateLimit(
   tutorUid: string,
