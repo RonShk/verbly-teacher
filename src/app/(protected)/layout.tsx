@@ -17,7 +17,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     return onAuthStateChanged(clientAuth, (currentUser) => {
       setUser(currentUser)
       setLoading(false)
-      if (!currentUser) router.replace('/login')
+      if (!currentUser) router.replace('/private-beta')
     })
     // router is a stable reference in App Router — no dep needed
     // eslint-disable-next-line react-hooks/exhaustive-deps

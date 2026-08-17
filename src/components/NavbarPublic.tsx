@@ -31,6 +31,8 @@ export function NavbarPublic() {
     })
   }, [])
 
+  if (pathname === '/private-beta') return null
+
   const initials = (() => {
     const name = user?.displayName ?? ""
     const parts = name.trim().split(/\s+/).filter(Boolean)

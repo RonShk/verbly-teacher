@@ -1,6 +1,7 @@
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase/admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { enforceIpRateLimit } from '@/lib/server/rateLimit'
+import { isAllowedTutorEmail } from '@/lib/server/verifyAuth'
 
 interface BootstrapBody {
   idToken: string
@@ -34,6 +35,10 @@ export async function POST(request: Request): Promise<Response> {
   } catch (err) {
     console.error('Token verification failed:', err)
     return Response.json({ error: 'Invalid or expired token' }, { status: 401 })
+  }
+
+  if (!isAllowedTutorEmail(email)) {
+    return Response.json({ error: 'This tutor account is not enabled yet.' }, { status: 403 })
   }
 
   try {

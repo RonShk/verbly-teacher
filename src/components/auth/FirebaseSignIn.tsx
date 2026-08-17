@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import * as firebaseui from 'firebaseui'
 import 'firebaseui/dist/firebaseui.css'
 import './firebaseui-dark.css'
-import { onAuthStateChanged } from 'firebase/auth'
+import { signOut } from 'firebase/auth'
 import { clientAuth, compatAuth } from '@/lib/firebase/client'
 import type firebase from 'firebase/compat/app'
 
@@ -13,10 +13,8 @@ const BASE_UI_CONFIG: Omit<firebaseui.auth.Config, 'callbacks'> = {
   signInOptions: [
     {
       provider: 'google.com',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fullLabel: 'Continue with Google',
       customParameters: { prompt: 'select_account' },
-    } as any,
+    },
   ],
   signInFlow: 'popup',
 }
@@ -26,14 +24,6 @@ export default function FirebaseSignIn() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(clientAuth, (user) => {
-      // User exists, !null --> Send to '/'. Only rendered on unprotected routes (i.e., login)
-      if (user) router.replace('/')
-    })
-    return unsubscribe
-  }, [router])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -56,6 +46,11 @@ export default function FirebaseSignIn() {
                 body: JSON.stringify({ idToken }),
               })
               if (!res.ok) {
+                await signOut(clientAuth).catch(() => undefined)
+                if (res.status === 403) {
+                  router.replace('/private-beta')
+                  return
+                }
                 const text = await res.text()
                 let message = 'Something went wrong. Please try again.'
                 try {
